@@ -1,4 +1,11 @@
-SEARCH_QUERY = {
+"""
+Configuration file for the parser.
+
+This file contains constants and configurations used throughout the application.
+Modifying these values will change the behavior of the search and data processing.
+"""
+
+SEARCH_QUERY = [
     "KSЕ Агроцентр",
     "Олег Нів’євський",
     "Марія Богонос",
@@ -14,6 +21,8 @@ SEARCH_QUERY = {
     "Вільям Мейєрс",
     "Василь Квартюк",
     "Дмитро Тесленко"
-}
+]
 
-SERP_API_KEY = "f2ae2e2cc4ee26a03d44c09eb54e2ca095632ae1105a2b96d49cd89b1dac89a3"
+API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
+
+SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"
