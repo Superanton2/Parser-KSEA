@@ -1,110 +1,29 @@
-import csv
-from serpapi import GoogleSearch
-# from datetime import datetime
+from get_lenks_from_newsAPI import get_lenks_from_newsAPI
+from get_links_from_google import get_links_from_google
+from data_sorting import data_sorting
 
-# --- Налаштування ---
+from configuration import SEARCH_QUERY, SERP_API_KEY
 
-API_KEY = "f2ae2e2cc4ee26a03d44c09eb54e2ca095632ae1105a2b96d49cd89b1dac89a3"
-USER_INPUT = {
-    "KSЕ Агроцентр" : ["",""],
-    "Олег Нів’євський" : ["10-10-2024","20-10-2025"], #
-    "Марія Богонос" : ["",""],
-    "Павло Мартишев" :  ["",""], #
-    "Валентин Літвінов" : ["",""], #
-    "Іван Колодяжний" : ["",""],
-    "Елліна Юрченко" : ["",""],
-    "Григорій Стольнікович" : ["",""],
-    "Артур Бурак" : ["",""],
-    "Роксолана Назаркіна" : ["",""],
-    "Аліна Одинець" : ["",""],
-    "Олександр Перехожук" : ["",""],
-    "Вільям Мейєрс" : ["",""],
-    "Василь Квартюк" : ["",""],
-    "Дмитро Тесленко" : ["",""],
-}
 
-OUTPUT_CSV_FILE = "google_news_results.csv"
 
-query = list(USER_INPUT.keys())
-date = list(USER_INPUT.values())
+def main(SEARCH_QUERY, SERP_API_KEY):
+    # the main function that combines all three blocks of code together
 
-MIN_DATE = "01-01-2016"
-MAX_DATE = "01-01-2025"
 
-start_date = []
-end_date = []
+    # search by news
+    get_lenks_from_newsAPI(SEARCH_QUERY ,SERP_API_KEY)
 
-# # створення списку дат
-# for item in date:
-#     # початок
-#     if item[0] == "":
-#         start_date.append("01-01-2016")
-#     else:
-#         if item[0] < MIN_DATE:
-#             start_date.append(MIN_DATE)
-#         else:
-#             start_date.append(item[0])
-#
-#     # кінець
-#     if item[1] == "":
-#         end_date.append(datetime.today())
-#     if item[1] != "":
-#         end_date.append(item[1])
+    # search by google
+    get_links_from_google(SEARCH_QUERY)
+
+    # data sorting
+    # not working yet
+    data_sorting()
 
 
 
 
-# --- Основний скрипт ------------------------------
 
-# Відкриваємо CSV-файл для запису ОДИН РАЗ на початку
-# newline='' - це стандартна рекомендація, щоб уникнути порожніх рядків
-with open(OUTPUT_CSV_FILE, 'w', newline='', encoding='utf-8') as csvfile:
-    # Створюємо "записувач" і визначаємо назви колонок
-    fieldnames = ['Людина', 'Заголовок', 'Дата', 'Джерело','Посилання']
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-    # Записуємо заголовки в файл
-    writer.writeheader()
-
-    print("Searching...")
-    # Проходимося по кожній людині зі списку
-    for person in query:
-
-        # Параметри для пошукового запиту
-        params = {
-            "tbm": "nws",  # tbm=nws означає пошук у розділі "Новини"
-            "q": person,  # Пошуковий запит
-            "num": "100",  # Максимальна кількість результатів
-            "api_key": API_KEY,
-            "tbs": f"cdr:1,cd_min:{start_date},cd_max:{end_date}" # дата запиту
-        }
-
-        # Виконуємо запит до SerpApi
-        search = GoogleSearch(params)
-        results_dict = search.get_dict()
-
-        # Перевіряємо, чи є в результатах блок 'news_results'
-        if 'news_results' in results_dict:
-            # Якщо є, проходимо по кожній знайденій новині
-            for news_item in results_dict['news_results']:
-                # Записуємо рядок у CSV
-                writer.writerow({
-                    'Людина': person,
-                    'Заголовок': news_item.get('title'),
-                    'Дата': news_item.get('date'),
-                    'Джерело': news_item.get('source'),
-                    'Посилання': news_item.get('link')
-                })
-            print(f"✅ Знайдено {len(results_dict['news_results'])} новин.")
-
-        else:
-            # Якщо результатів немає, записуємо про це в файл
-            writer.writerow({
-                'Людина': person,
-                'Заголовок': '❌ Нічого не знайдено',
-                'Дата': '',
-                'Посилання': ''
-            })
-            print("❌ Новин не знайдено.")
-
-print(f"\n🎉 Вся робота завершена! Результати збережено у файл '{OUTPUT_CSV_FILE}'")
+if __name__ == "__main__":
+    main(SEARCH_QUERY, SERP_API_KEY)
