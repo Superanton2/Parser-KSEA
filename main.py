@@ -1,4 +1,4 @@
-from get_links_from_newsAPI import get_links_from_serpAPI
+from get_links_from_serpAPI import get_links_from_serpAPI
 from get_links_from_google import get_links_from_google
 from data_sorting import data_sorting
 
