@@ -7,8 +7,13 @@ from configuration import SEARCH_QUERY, SERP_API_KEY
 
 
 def main(SEARCH_QUERY, SERP_API_KEY):
-    # the main function that combines all three blocks of code together
+    """
+    the main function that combines all three blocks of code together
 
+    :param SEARCH_QUERY: enter list of people who will be searched
+    :param SERP_API_KEY: enter API key so serp API can work
+    :return: nothing
+    """
 
     # search by news
     get_lenks_from_newsAPI(SEARCH_QUERY ,SERP_API_KEY)
@@ -19,10 +24,6 @@ def main(SEARCH_QUERY, SERP_API_KEY):
     # data sorting
     # not working yet
     data_sorting()
-
-
-
-
 
 
 if __name__ == "__main__":
