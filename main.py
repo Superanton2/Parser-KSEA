@@ -36,7 +36,9 @@ def main(search_query: list[str]):
 
     """Sorting"""
     ds = DataSorting(pd.read_csv("google_search_results.csv"))
-    ds.sort_by_column("Date", ascending=True).remove_by_links(links=["kse.ua"])
+    ds.remove_by_links(links=["kse.ua", ".ru"])
+    ds.clean_dates()
+    ds.sort_by_column("Date", ascending=True)
     ds.dataframe.to_csv("google_links_sorted.csv", index=False)
     """Sorting"""
 

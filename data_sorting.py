@@ -1,5 +1,5 @@
 import pandas as pd
-
+from htmldate import find_date
 
 class DataSorting:
     """A class for sorting and filtering a pandas DataFrame."""
@@ -90,3 +90,52 @@ class DataSorting:
             pattern = '|'.join(links)
             filtered_df = self.dataframe[~self.dataframe['Link'].str.contains(pattern, na=False)]
             return filtered_df
+
+
+    def clean_dates(self):
+        """ Clear publication dates
+
+        If there is publication date this method removes redundant information and makes it into format YYYY-MM-DD
+        If there isn't publication date, then this method finds the value using module find_date from htmldate
+        """
+
+        # we take only where there is a date
+        present_date_mask = self.dataframe['Date'].notna()
+        # we cut all existing dates to the first 10 characters
+        self.dataframe.loc[present_date_mask, 'Date'] = self.dataframe.loc[present_date_mask, 'Date'].str[:10]
+
+
+        # now we take only where there are no date
+        missing_date_mask = self.dataframe['Date'].isna()
+
+        print("Looking for dates...")
+        for index, row in self.dataframe[missing_date_mask].iterrows():
+            print(f"{index}/{len(self.dataframe['Date'])}  - {self.dataframe['Date'][index]}")
+
+            # relevant link
+            link = row['Link']
+
+            # if no link, skip
+            if pd.isna(link):
+                continue
+
+            try:
+                # looking for a date at the link
+                found_date = find_date(link, outputformat='%Y-%m-%d', original_date=True)
+
+                if found_date:
+                    # write value by index in Date
+                    self.dataframe.at[index, 'Date'] = found_date
+
+            except Exception as e:
+                print(e)
+
+
+
+    def delete_repeating_links(self):
+        pass
+
+
+    def rename_all(self):
+        pass
+

@@ -6,21 +6,48 @@ Modifying these values will change the behavior of the search and data processin
 """
 
 SEARCH_QUERY = [
-    "KSЕ Агроцентр",
+    "Center for Food and Land Use Research (KSE Agrocenter)",
+    "Агроцентр KSE",
+
+    "Oleg Nivievskyi"
+    "Oleh Nivievskyi",
     "Олег Нів’євський",
+
+    "Mariia Bogonos",
     "Марія Богонос",
+
+    "Pavlo Martyshev",
     "Павло Мартишев",
+
+    "Valentyn Litvinov",
     "Валентин Літвінов",
+
+    "Ivan Kolodiazhnyi",
     "Іван Колодяжний",
+
+    "Ellina Iurchenko",
     "Елліна Юрченко",
-    "Григорій Стольнікович",
-    "Артур Бурак",
+
+    "Roksolana Nazarkina",
     "Роксолана Назаркіна",
-    "Аліна Одинець",
-    "Олександр Перехожук",
-    "Вільям Мейєрс",
-    "Василь Квартюк",
-    "Дмитро Тесленко"
+
+    "Hryhorii Stolnikovych",
+    "Григорій Стольнікович",
+
+    "Roman Neyter",
+    "Роман Нейтер",
+
+    "Igor Piddubnyi",
+    "Ігор Піддубний",
+
+    "Дмитро Душко",
+    "Dmytro Dushko",
+
+    "Artur Burak",
+    "Артур Бурак",
+
+    "Dmytro Tеslеnko",
+    "Дмитро Тесленко",
 ]
 
 API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"

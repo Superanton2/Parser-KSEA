@@ -64,6 +64,7 @@ class GoogleSearchService:
                     'q': decoded_query,
                     'cx': self._search_engine_id,
                     'start': start_index,
+                    'gl': 'ua',
                     'num': min(10, max_results - len(all_results))
                 }
 
@@ -191,7 +192,8 @@ class GoogleSearchService:
                 date = metatags[0].get('article:published_time', '')
 
         if not date:
-            date = datetime.now().strftime('%Y-%m-%d')
+            # date = datetime.now().strftime('%Y-%m-%d')
+            date = None
 
         return [
             person,
