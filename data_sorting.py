@@ -1,5 +1,6 @@
 import pandas as pd
 from htmldate import find_date
+from configuration import REWRITE_NAMES
 
 class DataSorting:
     """A class for sorting and filtering a pandas DataFrame."""
@@ -97,6 +98,8 @@ class DataSorting:
 
         If there is publication date this method removes redundant information and makes it into format YYYY-MM-DD
         If there isn't publication date, then this method finds the value using module find_date from htmldate
+
+        Returns: Returns self for method chaining
         """
 
         # we take only where there is a date
@@ -130,12 +133,30 @@ class DataSorting:
             except Exception as e:
                 print(e)
 
+        return self
 
 
-    def delete_repeating_links(self):
-        pass
+    def remove_duplicates(self):
+        """Deletes duplicates from column Link
+
+        if in column Link there is same link this method removes second duplicate
+        Returns: Returns self for method chaining
+        """
+        # deleting duplicates
+        self.dataframe = self.dataframe.drop_duplicates(subset=['Link'], keep='first')
+
+        return self
 
 
     def rename_all(self):
-        pass
+        """Rewrite names using keys from the configuration
 
+        take dict from the configuration file
+        and rewrite only those values in Person which ase in dict.keys
+
+        Returns: Returns self for method chaining
+        """
+        # replaces names on the table using configuration file
+        self.dataframe['Person'] = self.dataframe['Person'].replace(REWRITE_NAMES)
+
+        return self

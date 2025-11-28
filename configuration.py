@@ -50,6 +50,25 @@ SEARCH_QUERY = [
     "Дмитро Тесленко",
 ]
 
+REWRITE_NAMES = {
+    "Center for Food and Land Use Research (KSE Agrocenter)" : "KSE Agrocenter",
+    "Агроцентр KSE" : "KSE Agrocenter",
+    "Oleg Nivievskyi" : "Oleh Nivievskyi",
+    "Олег Нів’євський" : "Oleh Nivievskyi",
+    "Марія Богонос" : "Mariia Bogonos",
+    "Павло Мартишев" : "Pavlo Martyshev",
+    "Валентин Літвінов" : "Valentyn Litvinov",
+    "Іван Колодяжний" : "Ivan Kolodiazhnyi",
+    "Елліна Юрченко" : "Ellina Iurchenko",
+    "Роксолана Назаркіна" : "Roksolana Nazarkina",
+    "Артур Бурак" : "Artur Burak",
+    "Дмитро Тесленко" : "Dmytro Tеslеnko",
+    "Дмитро Душко" : "Dmytro Dushko",
+    "Григорій Стольнікович" : "Hryhorii Stolnikovych",
+    "Роман Нейтер" : "Roman Neyter",
+    "Ігор Піддубний" : "Igor Piddubnyi",
+}
+
 API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
 
 SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"

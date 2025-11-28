@@ -35,8 +35,17 @@ def main(search_query: list[str]):
     print("\nAll operations completed successfully!")
 
     """Sorting"""
+    print("Data sorting:")
     ds = DataSorting(pd.read_csv("google_search_results.csv"))
-    ds.remove_by_links(links=["kse.ua", ".ru"])
+    links = [
+        "kse.ua", ".ru", "vk.com", "facebook.com", "linkedin.com", "instagram.com", "opendatabot.ua",
+        "tiktok.com", "letterboxd.com", "goodreads.com", "scholar.google.com", "academia.edu", "scribd.com", "youcontrol.com"
+    ]
+
+    print("Data preparation...")
+    ds.remove_by_links(links=links).remove_duplicates().rename_all()
+
+    print("Search by dates...")
     ds.clean_dates()
     ds.sort_by_column("Date", ascending=True)
     ds.dataframe.to_csv("google_links_sorted.csv", index=False)
