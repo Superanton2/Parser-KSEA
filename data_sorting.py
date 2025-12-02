@@ -1,6 +1,8 @@
 import pandas as pd
 from htmldate import find_date
+
 from configuration import REWRITE_NAMES
+from filters import LinkFilter
 
 class DataSorting:
     """A class for sorting and filtering a pandas DataFrame."""
@@ -91,6 +93,33 @@ class DataSorting:
             pattern = '|'.join(links)
             filtered_df = self.dataframe[~self.dataframe['Link'].str.contains(pattern, na=False)]
             return filtered_df
+
+    def apply_url_filter(self):
+        """
+        Applies advanced filtering based on domains, URL keywords, and Titles.
+        Uses the logic from filters.py
+
+        Returns: Returns self for method chaining
+        """
+        initial_count = len(self.dataframe)
+
+        filter_model = LinkFilter()
+
+        # Використовуємо apply, щоб перевірити кожен рядок (посилання + заголовок)
+        # axis=1 означає, що ми йдемо по рядках
+
+        # make mask with relevant urls
+        mask = self.dataframe.apply(
+            lambda row: filter_model.is_relevant(row['Link'], row.get('Title', '')),
+            axis=1
+        )
+
+
+        self.dataframe = self.dataframe[mask]
+
+        removed_count = initial_count - len(self.dataframe)
+        print(f"Url filter removed {removed_count} irrelevant links.")
+        return self
 
 
     def clean_dates(self):

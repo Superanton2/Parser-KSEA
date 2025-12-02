@@ -1,6 +1,6 @@
 import pandas as pd
 
-from configuration import SEARCH_QUERY, API_KEY, SEARCH_ENGINE_ID
+from configuration import SEARCH_QUERY, API_KEY, SEARCH_ENGINE_ID, links_to_remove
 from data_sorting import DataSorting
 from google_search_service import GoogleSearchService
 
@@ -35,21 +35,32 @@ def main(search_query: list[str]):
     print("\nAll operations completed successfully!")
 
     """Sorting"""
-    print("Data sorting:")
+    print("\nStarting Data Processing:")
+
     ds = DataSorting(pd.read_csv("google_search_results.csv"))
-    links = [
-        "kse.ua", ".ru", "vk.com", "facebook.com", "linkedin.com", "instagram.com", "opendatabot.ua",
-        "tiktok.com", "letterboxd.com", "goodreads.com", "scholar.google.com", "academia.edu", "scribd.com", "youcontrol.com"
-    ]
+    # # checking if the file exists
+    # try:
+    #     df = pd.read_csv("google_search_results.csv")
+    # except FileNotFoundError:
+    #     print("File google_search_results.csv not found. Please run search again.")
+    #     return
+    #
+    # ds = DataSorting(df)
+
 
     print("Data preparation...")
-    ds.remove_by_links(links=links).remove_duplicates().rename_all()
+    ds.remove_duplicates().rename_all()
+    # filtering with filters
+    ds.apply_url_filter()
+
+    ds.remove_by_links(links=links_to_remove)
 
     print("Search by dates...")
     ds.clean_dates()
     ds.sort_by_column("Date", ascending=True)
     ds.dataframe.to_csv("google_links_sorted.csv", index=False)
     """Sorting"""
+    print("Finish")
 
 
 if __name__ == "__main__":
