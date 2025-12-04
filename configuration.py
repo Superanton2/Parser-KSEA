@@ -9,6 +9,9 @@ API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
 
 SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"
 
+FILTER_API_KEY = "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"
+# # Отримати ключ: https://openrouter.ai/keys
+
 SEARCH_QUERY = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
     "Агроцентр KSE",
@@ -124,19 +127,10 @@ url_stop_words = [
     'search?q=', 'kved', 'fo-p', "persons", "dosye",  # database
 ]
 
-title_stop_words = [
-    'погода', 'прогноз', 'синоптик', 'сніг', 'дощ', 'градус', 'шторм',  # weather
-    'розклад руху', 'поїзд', 'електричка', 'маршрутка',  # transport
-    'гороскоп', 'таро', 'місячний календар',  # esoteric
-    'купити', 'продати', 'акція', 'знижка',  # commerce
-    'відключення світла', 'графік відключень',
-    'помер', 'загинув', 'дтп', 'аварія',  # crime
-    'клініка', 'лікар', 'прийом', 'консультація лікаря',  # medicine
-    "Archives",
-]
 
 links_to_remove = [
-    ".pdf", ".ru", "https://www.bbc.com/ukrainian/news-62062756",
+    ".pdf", ".ru",
+    "https://www.bbc.com/ukrainian/news-62062756",
     "https://www.ukr.net/news/details/fotoreportazh/107095360.html",
     "https://voxukraine.org/authors/oleg-nivyevskij", "https://www.youtube.com/watch?v=ph1DKPOf9_s",
     "https://www.ifpri.org/newsletter/ifpri-insights-april-2023/",
