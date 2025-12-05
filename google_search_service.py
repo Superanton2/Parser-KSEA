@@ -65,6 +65,7 @@ class GoogleSearchService:
                     'cx': self._search_engine_id,
                     'start': start_index,
                     'gl': 'ua',
+
                     'num': min(10, max_results - len(all_results))
                 }
 
@@ -174,7 +175,7 @@ class GoogleSearchService:
         """Extracts and formats data for a single CSV row from a search result item.
 
         This helper method attempts to find a publication date from the result's
-        metadata. If no date is found, it defaults to the current date.
+        metadata.
 
         Args:
             person (str): The name of the person or query associated with the result.

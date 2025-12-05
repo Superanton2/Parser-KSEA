@@ -1,19 +1,17 @@
 import pandas as pd
+from urllib.parse import urlparse
+
 from htmldate import find_date
 from newspaper import Article
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
-
-from openai.types.chat import ChatCompletionUserMessageParam
-from openai import OpenAI
 
 from configuration import REWRITE_NAMES, FILTER_API_KEY, blacklisted_domains, url_stop_words
 
 class DataSorting:
     """A class for sorting and filtering a pandas DataFrame."""
     def __init__(self, dataframe: pd.DataFrame):
-        """Initializes the DataSorting class with a DataFrame.
+        """Initializes the DataSorting class with a DataFrame and other parameters.
 
         Args:
             dataframe (pd.DataFrame): The pandas DataFrame to be processed.
@@ -21,13 +19,6 @@ class DataSorting:
         self.dataframe = dataframe
 
         self.__filter_api_key = FILTER_API_KEY
-
-        self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=self.__filter_api_key,
-        )
-
-        self.model = "openai/gpt-oss-20b:free"  # Безкоштовна модель
 
         self.blacklisted_domains = blacklisted_domains
         self.url_stop_words = url_stop_words
@@ -162,7 +153,7 @@ class DataSorting:
         return self
 
     def _check_relevance(self, url: str) -> bool:
-        """ Check if url is relevant using filters and urlparse
+        """ Check if url is relevant using filters and urlparse.
 
         Returns: Returns False if: 1. if domain is in blacklisted_domains
                                    2. if ulr is empty
@@ -173,15 +164,23 @@ class DataSorting:
         # Handling empty values
         if not isinstance(url, str): return False
 
-        # prepare url
+        # prepare url and parse it to 6 components
         url = url.lower()
-
-        # parse url to 6 components
         parsed_url = urlparse(url)
-        # in url take domain (between https:// and the first /), lower register and delete www.
-        domain = parsed_url.netloc.lower().replace('www.', '')
 
-        # check if domain is in blacklisted_domains
+        # in url take domain (between https:// and the first /), lower register and delete www.
+        domain = parsed_url.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+
+
+
+        # check if domain or it part is in blacklisted_domains
+        for blocked_domain in self.blacklisted_domains:
+            if domain == blocked_domain or domain.endswith("." + blocked_domain) or domain.startswith(blocked_domain + "."):
+                return False
+
+
         if domain in self.blacklisted_domains:
             return False
 
@@ -193,119 +192,145 @@ class DataSorting:
         return True
         # if all is good return True
 
-
     def fill_all_blank_slots(self):
-        """
-        Головний метод, який запускає цикл обробки всього DataFrame.
-        Він проходить по кожному рядку і викликає обробку окремого посилання.
+        """Fill maximum possible for whole dataframe.
+
+        This method creates new colum in dataframe named 'Tittle text'.
+        this column is for ai_filter to better understand the meaning of the page
+
+        Also, this method iterates through every row, performs a fill_single_blank_slot for each one
 
         Returns: Returns self for method chaining
         """
 
-        print(f"Починаємо обробку {len(self.dataframe)} посилань...")
+        print(f"We start processing {len(self.dataframe)} links...")
 
-        # Створюємо нові колонки, якщо їх немає (щоб уникнути помилок при запису)
+        # create new colum 'Tittle text'
         if 'Tittle text' not in self.dataframe.columns:
             self.dataframe['Tittle text'] = None
 
 
-        # Проходимось по dataframe через iterrows, щоб мати доступ до індексу і рядка
+        # iterates through every row
         for index, row in self.dataframe.iterrows():
             link = row['Link']
+            print(f"[{index}]: {link}")
 
-            # Пропускаємо пусті посилання
-            if pd.isna(link) or link == "":
-                continue
+            # use fill_single_blank_slot
+            self.fill_single_blank_slot(index)
 
-            print(f"[{index}] Обробка: {link}")
-
-            # Викликаємо метод обробки ОДНОГО посилання
-            # Ми передаємо index, щоб всередині можна було записати результат в таблицю
-            self.fill_single_blank_slot(index, link)
-            print("\n\n\n")
-
-        print("Парсинг завершено.")
+        print("Filling blank slots if finished")
         return self
 
-    def fill_single_blank_slot(self, index, url: str):
-        """
+    def fill_single_blank_slot(self, index):
+        """Fill maximum possible for row with input index
 
+        If there isn't link for this index, skip
+
+        If there is publication date this method removes redundant information and makes it into format YYYY-MM-DD
         Returns: Returns self for method chaining
         """
+        # if no link, skip
+        if pd.isna(self.dataframe['Link'][index]) or self.dataframe['Link'][index] == "":
+            print("there is no value in Link for this index")
+            return False
 
-        print(f"обробляємо {url}")
 
-        self._newspaper_parse(index, url)
-        self._manual_parse(index, url)
+        self._newspaper_parse(index)
+        self._requests_parse(index)
 
-
-        # we take only where there is a date
-        present_date_mask = self.dataframe['Date'].notna()
-        # we cut all existing dates to the first 10 characters
-        self.dataframe.loc[present_date_mask, 'Date'] = self.dataframe.loc[present_date_mask, 'Date'].str[:10]
+        if pd.notna(self.dataframe.at[index, 'Date']):
+            self.dataframe.at[index, 'Date'] = str(self.dataframe.at[index, 'Date'])[:10]
 
         return self
 
+    def _newspaper_parse(self, index, max_text_save_len: int = 1500) -> bool:
+        """Fill blank slots by the inputted index using module newspaper
 
-    def _newspaper_parse(self, index, url: str) -> bool:
+        This helper method attempts to find information for blank slots
+
+            1. If there isn't publication date, this method attempts to find value using newspaper
+            2. If there isn't Tittle text, this method attempts to find value using newspaper
+
+        :param index: index of row were to use this method
+        :param max_text_save_len: max len(characters) of the text from article.
+                                  Defaults to 100
+        :return: True if all was good
+                 False if we got an error during the search
         """
+        url = self.dataframe['Link'][index]
 
-        :param index:
-        :param url:
-        :return:
-        """
-
-        print("newspaper\n\n")
+        # try to parse url
         try:
             article = Article(url)
-            article.download()  # 1. Завантажує HTML сторінки
+            article.download()
 
-            article.parse()  # 2. Парсить HTML і витягує текст
+            article.parse()
         except Exception as E:
             print(E)
             return False
 
-
+        # if there is text, save
         if article.text:
-            self.dataframe.at[index, "Tittle text"] = article.text[:1500]
+            self.dataframe.at[index, "Tittle text"] = article.text[:max_text_save_len]
 
 
-        # якщо поста дата і ми знайшли нову, то зберігаємо її
+        # if date is empty and new one if founded, save
         if article.publish_date and pd.isna(self.dataframe['Date'][index]):
             self.dataframe.at[index, "Date"] = article.publish_date
 
         return True
 
+    def _requests_parse(self, index, max_text_save_len: int = 1500) -> bool:
+        """Fill blank slots by the inputted index using requests.
 
-    def _manual_parse(self, index, url: str) -> bool:
-        """ Clear publication dates
+        This helper method attempts to find information for blank slots
+            1. If there isn't publication date, this method attempts to find value using method _find_single_date
+            2. If there isn't Tittle text, this method attempts to find value using requests and BeautifulSoup
 
-        If there is publication date this method removes redundant information and makes it into format YYYY-MM-DD
-        If there isn't publication date, then this method finds the value using module find_date from htmldate
+        if there were Exception during attempt of finding Tittle text, this method will return False
 
-
+        :param index: index of row were to use this method
+        :param max_text_save_len: max len(characters) of the text from article.
+                                  Defaults to 100
+        :return: True if all was good
+                 False if we got an error during the search
         """
-        print("manual\n\n")
 
-        # якщо нема дати, то знайти
-        if not self.dataframe['Date'][index]:
-            self._find_single_date(index, url)
+        url = self.dataframe['Link'][index]
+
+        # If there isn't publication date use _find_single_date
+        if pd.isna(self.dataframe['Date'][index]):
+            self._find_single_date(index)
 
 
-        # response = requests.get(url)
-        # soup = BeautifulSoup(response.text, 'lxml')
+        # If there isn't Tittle text, attempts to find
+        if pd.isna(self.dataframe['Tittle text'][index]):
+
+            try:
+                response = requests.get(url)
+                soup = BeautifulSoup(response.text, 'lxml')
+                article_text = soup.get_text()
+
+            except Exception as E:
+                print(E)
+                return False
+
+            # if there are, then we save max_text_save_len of characters
+            clean_article_text = " ".join(article_text.split())
+            self.dataframe.at[index, "Tittle text"] = clean_article_text[:max_text_save_len]
+
         return True
 
+    def _find_single_date(self, index) -> bool:
+        """Find publication date by the inputted index.
 
+        This helper method attempts to find a publication date using htmldate.
+        If no date is found, it returns False.
 
-    def _find_single_date(self, index, url: str) -> bool:
-
-        # print("find date\n\n")
-
-
-        # if no link, skip
-        if pd.isna(self.dataframe['Link'][index]):
-            return False
+        :param index: index by which we will check the data
+        :return: True if all was good
+                 False if we got an error during the search
+        """
 
         try:
             # looking for a date at the link
@@ -320,26 +345,3 @@ class DataSorting:
             return False
 
         return True
-
-
-
-
-    # AI
-    # def apply_ai_filtering(self):
-    #       atlas-cloud/fp8
-    #     # AI чистка через OpenRouter
-    #     if not self.dataframe.empty:
-    #         print("2. Запуск AI аналізу через OpenRouter...")
-    #         ai_filter = AIFilter()
-    #
-    #         mask = self.dataframe.apply(
-    #             lambda row: ai_filter.is_relevant_content(row.get('Link', '')),
-    #             axis=1
-    #         )
-    #
-    #         initial_count = len(self.dataframe)
-    #
-    #         self.dataframe = self.dataframe[mask]
-    #         print(f"AI відсіяв ще {initial_count - len(self.dataframe)} статей.")
-    #
-    #     return self

@@ -1,3 +1,8 @@
 pandas~=2.3.3
 google-api-python-client~=2.187.0
 htmldate~=1.9.4
+requests~=2.32.5
+beautifulsoup4 ~=4.14.3
+lxml~=6.0.2
+lxml_html_clean~=0.4.3
+newspaper3k~=0.2.8

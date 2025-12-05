@@ -9,8 +9,7 @@ API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
 
 SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"
 
-FILTER_API_KEY = "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"
-# # Отримати ключ: https://openrouter.ai/keys
+FILTER_API_KEY = "API KEY FROM https://openrouter.ai/keys"
 
 SEARCH_QUERY = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
