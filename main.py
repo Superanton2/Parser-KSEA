@@ -37,7 +37,7 @@ def main(search_query: list[str]):
     """Sorting"""
     print("\nStarting Data Processing:")
 
-    ds = DataSorting(pd.read_csv("../learning/google_search_results.csv"))
+    ds = DataSorting(pd.read_csv("google_search_results.csv"))
 
 
     print("Data preparation...")
