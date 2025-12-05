@@ -9,8 +9,6 @@ API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
 
 SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"
 
-FILTER_API_KEY = "API KEY FROM https://openrouter.ai/keys"
-
 SEARCH_QUERY = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
     "Агроцентр KSE",

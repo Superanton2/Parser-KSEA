@@ -6,7 +6,7 @@ from newspaper import Article
 import requests
 from bs4 import BeautifulSoup
 
-from configuration import REWRITE_NAMES, FILTER_API_KEY, blacklisted_domains, url_stop_words
+from configuration import REWRITE_NAMES, blacklisted_domains, url_stop_words
 
 class DataSorting:
     """A class for sorting and filtering a pandas DataFrame."""
@@ -17,8 +17,6 @@ class DataSorting:
             dataframe (pd.DataFrame): The pandas DataFrame to be processed.
         """
         self.dataframe = dataframe
-
-        self.__filter_api_key = FILTER_API_KEY
 
         self.blacklisted_domains = blacklisted_domains
         self.url_stop_words = url_stop_words
