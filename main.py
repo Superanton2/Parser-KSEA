@@ -37,11 +37,12 @@ def main(search_query: list[str]):
     """Sorting"""
     print("\nStarting Data Processing:")
 
-    ds = DataSorting(pd.read_csv("google_search_results.csv"))
+    ds = DataSorting(pd.read_csv("../learning/google_search_results.csv"))
 
 
     print("Data preparation...")
     ds.remove_duplicates().rename_person()
+    ds.remove_by_links(links=links_to_remove)
 
     # filtering with filters
     ds.apply_url_filter()
@@ -51,7 +52,6 @@ def main(search_query: list[str]):
     # print("Apply AI filter")
     # ds.apply_ai_filtering()
 
-    ds.remove_by_links(links=links_to_remove)
     ds.sort_by_column("Date", ascending=True)
     ds.dataframe.to_csv("google_links_sorted.csv", index=False)
     """Sorting"""
