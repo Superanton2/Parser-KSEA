@@ -1,19 +1,52 @@
-"""
-Configuration file for the parser.
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final
 
-This file contains constants and configurations used throughout the application.
-Modifying these values will change the behavior of the search and data processing.
-"""
 
-API_KEY = "API KEY FROM https://console.cloud.google.com/apis/credentials"
+@dataclass(frozen=True)
+class SearchConfig:
+    """Configuration for Google Custom Search API."""
+    api_key: str = "API KEY FROM https://console.cloud.google.com/apis/credentials"
+    search_engine_id: str = "SEARCH ENGINE ID FROM https://cse.google.com/"
+    max_results: int = 100
+    sort_by_date: bool = True
+    region: str = "ua"
 
-SEARCH_ENGINE_ID = "SEARCH ENGINE ID FROM https://cse.google.com/"
 
-SEARCH_QUERY = [
+@dataclass(frozen=True)
+class OutputConfig:
+    """Configuration for output files."""
+    output_dir: Path = Path(".")
+    search_results_csv: str = "google_search_results.csv"
+    sorted_results_csv: str = "google_links_sorted.csv"
+    links_txt: str = "google_links.txt"
+
+    @property
+    def search_results_path(self) -> Path:
+        return self.output_dir / self.search_results_csv
+
+    @property
+    def sorted_results_path(self) -> Path:
+        return self.output_dir / self.sorted_results_csv
+
+    @property
+    def links_path(self) -> Path:
+        return self.output_dir / self.links_txt
+
+
+# Default configurations
+SEARCH_CONFIG: Final = SearchConfig()
+OUTPUT_CONFIG: Final = OutputConfig()
+
+# Legacy compatibility
+API_KEY: Final[str] = SEARCH_CONFIG.api_key
+SEARCH_ENGINE_ID: Final[str] = SEARCH_CONFIG.search_engine_id
+
+SEARCH_QUERY: Final[list[str]] = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
     "Агроцентр KSE",
 
-    "Oleg Nivievskyi"
+    "Oleg Nivievskyi",
     "Oleh Nivievskyi",
     "Олег Нів’євський",
 
@@ -54,7 +87,7 @@ SEARCH_QUERY = [
     "Дмитро Тесленко",
 ]
 
-REWRITE_NAMES = {
+REWRITE_NAMES: Final[dict[str, str]] = {
     "Center for Food and Land Use Research (KSE Agrocenter)" : "KSE Agrocenter",
     "Агроцентр KSE" : "KSE Agrocenter",
     "Oleg Nivievskyi" : "Oleh Nivievskyi",
@@ -73,7 +106,7 @@ REWRITE_NAMES = {
     "Ігор Піддубний" : "Igor Piddubnyi",
 }
 
-blacklisted_domains = [
+BLACKLISTED_DOMAINS: Final[list[str]] = [
     "kse.ua", "vk.com", "facebook.com", "linkedin.com", "instagram.com", "opendatabot.ua", "t.me",
     "tiktok.com", "letterboxd.com", "goodreads.com", "scholar.google.com", "academia.edu", "scribd.com",
     "youcontrol.com", "swrailway.gov.ua", "sinoptik.ua", "gismeteo.ua", "meteo.gov.ua",
@@ -99,7 +132,7 @@ blacklisted_domains = [
     "canactions.com", "kneu.edu.ua", "knu.ua", "hyeseonshin.com", "worldscientific.com",
     "amt.copernicus.org", "voxukraine.org", "imdb.com", "funball.org.ua", "rayrada.ck.ua",
     "new.knute.edu.ua", "en.wikipedia.org", "kiu.europa-uni.de", "savvy.ua", "laespecial.com.ar",
-    "events.bank.gov.ua", "events.bank.gov.ua", "dbnl.org", "research.wur.nl", "ukma.edu.ua",
+    "events.bank.gov.ua", "dbnl.org", "research.wur.nl", "ukma.edu.ua",
     "artsandculture.google.com", "ekmair.ukma.edu.ua", "tabs.ultimate-guitar.com", "biblioteka.cdu.edu.ua",
     "kolosok.org.ua", "zakon.rada.gov.ua", "periodicals.karazin.ua", "pharmacologyonline.silae.it",
     "molodyivchenyi.ua", "obuvna.com", "journals.uran.ua", "epc.eu", "yur-gazeta.com", "uadairy.com",
@@ -114,18 +147,23 @@ blacklisted_domains = [
     "laender-analysen.de", "kdpu.edu.ua", "pubs.acs.org", "polissyafc.com", "dblp.org", "bashtanskaotg.gov.ua"
 ]
 
-url_stop_words = [
-    'weather', 'pogoda', 'snih', 'dozhd', 'mokryj-snih', 'ozheledytsia',  # weather
-    'timetable', 'rozklad', 'ticket', 'passengers',  # transport
-    'realtor', 'kvartira', 'orenda', 'auction', 'prozorro.sale',  # property/trade
-    'clinic', 'likar', 'appointment', 'reviews', 'med-center',  # medicine
-    'login', 'signup', 'register', 'cart', 'checkout',  # technical
-    'followers', 'following', 'site/mathresult',  # Social networks
-    'search?q=', 'kved', 'fo-p', "persons", "dosye",  # database
+# Legacy compatibility
+blacklisted_domains = BLACKLISTED_DOMAINS
+
+URL_STOP_WORDS: Final[list[str]] = [
+    "weather", "pogoda", "snih", "dozhd", "mokryj-snih", "ozheledytsia",  # weather
+    "timetable", "rozklad", "ticket", "passengers",  # transport
+    "realtor", "kvartira", "orenda", "auction", "prozorro.sale",  # property/trade
+    "clinic", "likar", "appointment", "reviews", "med-center",  # medicine
+    "login", "signup", "register", "cart", "checkout",  # technical
+    "followers", "following", "site/mathresult",  # Social networks
+    "search?q=", "kved", "fo-p", "persons", "dosye",  # database
 ]
 
+# Legacy compatibility
+url_stop_words = URL_STOP_WORDS
 
-links_to_remove = [
+LINKS_TO_REMOVE: Final[list[str]] = [
     ".pdf", ".ru",
     "https://www.bbc.com/ukrainian/news-62062756",
     "https://www.ukr.net/news/details/fotoreportazh/107095360.html",
@@ -141,3 +179,7 @@ links_to_remove = [
     "https://freepolicybriefs.org/speaker_category/author/", "https://www.youtube.com/watch?v=gPHqA71BFWc",
     "https://www.youtube.com/watch?v=4h1nqwbV1v0", "https://www.youtube.com/watch?v=kt0U1xilRAI"
 ]
+
+# Legacy compatibility
+links_to_remove = LINKS_TO_REMOVE
+

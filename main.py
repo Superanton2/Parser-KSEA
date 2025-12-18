@@ -1,61 +1,128 @@
+from pathlib import Path
+
 import pandas as pd
 
-from configuration import SEARCH_QUERY, API_KEY, SEARCH_ENGINE_ID, links_to_remove
+from configuration import (
+    SEARCH_QUERY,
+    API_KEY,
+    SEARCH_ENGINE_ID,
+    LINKS_TO_REMOVE,
+    OUTPUT_CONFIG,
+    SEARCH_CONFIG,
+)
 from data_sorting import DataSorting
 from google_search_service import GoogleSearchService
 
 
-def main(search_query: list[str]):
+def perform_search(
+    search_queries: list[str],
+    search_service: GoogleSearchService,
+) -> dict[str, list[dict]]:
     """
-    the main function that combines all three blocks of code together
+    Perform Google searches for multiple queries.
 
-    :param search_query: enter list of people who will be searched
-    :return: nothing
+    Args:
+        search_queries: List of search terms/names to search for.
+        search_service: Configured GoogleSearchService instance.
+
+    Returns:
+        Dictionary mapping queries to their search results.
     """
-
-    # Initialize the service
-    search_service = GoogleSearchService(API_KEY, SEARCH_ENGINE_ID)
-
-    # Perform searches for multiple people
     print("Starting Google Custom Search API operations\n")
-    results_by_person = search_service.search_multiple_queries(
-        search_query,
-        max_results=100,
-        sort_by_date=True
+    return search_service.search_multiple_queries(
+        search_queries,
+        max_results=SEARCH_CONFIG.max_results,
+        sort_by_date=SEARCH_CONFIG.sort_by_date,
     )
 
-    # Save results to CSV
-    search_service.save_to_csv(results_by_person, "google_search_results.csv")
 
-    # Optionally save links to TXT for a specific query
-    if search_query:
-        first_query_results = results_by_person.get(SEARCH_QUERY[0], [])
-        search_service.save_links_to_txt(first_query_results, "google_links.txt")
+def save_search_results(
+    results_by_person: dict[str, list[dict]],
+    search_service: GoogleSearchService,
+    search_queries: list[str],
+    output_csv: Path,
+    output_txt: Path
+) -> None:
+    """
+    Save search results to CSV and TXT files.
 
-    print("\nAll operations completed successfully!")
+    Args:
+        results_by_person: Dictionary of search results by query.
+        search_service: GoogleSearchService instance for saving.
+        search_queries: Original list of queries.
+        output_csv: Path for CSV output.
+        output_txt: Path for TXT output with links.
+    """
+    search_service.save_to_csv(results_by_person, str(output_csv))
 
-    """Sorting"""
+    if search_queries:
+        first_query_results = results_by_person.get(search_queries[0], [])
+        search_service.save_links_to_txt(first_query_results, str(output_txt))
+
+
+def process_and_sort_data(input_csv: Path, output_csv: Path) -> None:
+    """
+    Process and sort the search results data.
+
+    Args:
+        input_csv: Path to input CSV with raw search results.
+        output_csv: Path for sorted output CSV.
+    """
     print("\nStarting Data Processing:")
 
-    ds = DataSorting(pd.read_csv("google_search_results.csv"))
-
+    df = pd.read_csv(input_csv)
+    sorter = DataSorting(df)
 
     print("Data preparation...")
-    ds.remove_duplicates().rename_person()
-    ds.remove_by_links(links=links_to_remove)
+    sorter.remove_duplicates().rename_person()
+    sorter.remove_by_links(links=LINKS_TO_REMOVE)
 
-    # filtering with filters
-    ds.apply_url_filter()
+    # Apply URL filtering
+    sorter.apply_url_filter()
 
-    ds.fill_all_blank_slots()
+    # Fill missing data
+    sorter.fill_all_blank_slots()
 
-    # print("Apply AI filter")
-    # ds.apply_ai_filtering()
+    sorter.apply_ai_filter()
 
-    ds.sort_by_column("Date", ascending=True)
-    ds.dataframe.to_csv("google_links_sorted.csv", index=False)
-    """Sorting"""
-    print("Finish")
+    # Sort and save
+    sorter.sort_by_column("Date", ascending=True)
+    sorter.dataframe.to_csv(output_csv, index=False)
+
+    print(f"Sorted data saved to {output_csv}")
+
+
+def main(search_queries: list[str]) -> None:
+    """
+    Main function that orchestrates the search and sorting pipeline.
+
+    Args:
+        search_queries: List of people/terms to search for.
+    """
+    # Initialize the search service
+    search_service = GoogleSearchService(API_KEY, SEARCH_ENGINE_ID)
+
+    # Perform searches
+    results_by_person = perform_search(search_queries, search_service)
+
+    # Save raw results
+    raw_csv = OUTPUT_CONFIG.search_results_path
+    links_txt = OUTPUT_CONFIG.links_path
+    save_search_results(
+        results_by_person,
+        search_service,
+        search_queries,
+        raw_csv,
+        links_txt,
+    )
+
+    print("\nAll search operations completed successfully!")
+
+    # Process and sort data
+    sorted_csv = OUTPUT_CONFIG.sorted_results_path
+    process_and_sort_data(raw_csv, sorted_csv)
+
+    print("\nFinish")
 
 
 if __name__ == "__main__":
