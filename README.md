@@ -30,7 +30,7 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 2.  **Install the required Python packages:**
     ```bash
-    pip install google-api-python-client pandas
+    pip install -r requirements.txt
     ```
 
 ### Configuration
@@ -44,10 +44,7 @@ Before running the script, you need to configure your API credentials and search
 2.  **Update `configuration.py`:**
     Open the `configuration.py` file and replace the placeholder values with your credentials:
     ```python
-    # C:\Users\Maksym Lysak\PycharmProjects\Parser-KSEA\configuration.py
-
-    # ...
-
+    
     API_KEY = "YOUR_API_KEY_HERE"
 
     SEARCH_ENGINE_ID = "YOUR_SEARCH_ENGINE_ID_HERE"
