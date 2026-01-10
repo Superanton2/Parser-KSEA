@@ -33,6 +33,9 @@ def perform_search(
         search_queries,
         max_results=SEARCH_CONFIG.max_results,
         sort_by_date=SEARCH_CONFIG.sort_by_date,
+        region=SEARCH_CONFIG.region,
+        date_from=SEARCH_CONFIG.date_from,
+        date_to=SEARCH_CONFIG.date_to,
     )
 
 

@@ -2,6 +2,7 @@ import csv
 import urllib.parse
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -49,6 +50,8 @@ class GoogleSearchService:
         max_results: int = 100,
         sort_by_date: bool = False,
         region: str = "ua",
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> SearchResults:
         """Perform a Google search and retrieve results.
 
@@ -59,6 +62,8 @@ class GoogleSearchService:
             max_results: Maximum results to return (API limit: 100).
             sort_by_date: If True, sort results by date.
             region: Geographic region code for search results.
+            date_from: Optional absolute start date (YYYY-MM-DD or YYYYMMDD).
+            date_to: Optional absolute end date (YYYY-MM-DD or YYYYMMDD).
 
         Returns:
             List of search result dictionaries from the API.
@@ -77,6 +82,8 @@ class GoogleSearchService:
                 max_results - len(all_results),
                 sort_by_date,
                 region,
+                date_from,
+                date_to,
             )
 
             if results is None:
@@ -100,6 +107,8 @@ class GoogleSearchService:
         remaining: int,
         sort_by_date: bool,
         region: str,
+        date_from: str | None,
+        date_to: str | None,
     ) -> SearchResults | None:
         """Fetch a single page of search results.
 
@@ -109,6 +118,8 @@ class GoogleSearchService:
             remaining: Number of results still needed.
             sort_by_date: Whether to sort by date.
             region: Geographic region code.
+            date_from: Optional absolute start date (YYYY-MM-DD or YYYYMMDD).
+            date_to: Optional absolute end date (YYYY-MM-DD or YYYYMMDD).
 
         Returns:
             List of results or None if no more results/error.
@@ -122,8 +133,9 @@ class GoogleSearchService:
                 "num": min(self.RESULTS_PER_PAGE, remaining),
             }
 
-            if sort_by_date:
-                search_params["sort"] = "date"
+            sort_value = self._build_sort_param(sort_by_date, date_from, date_to)
+            if sort_value:
+                search_params["sort"] = sort_value
 
             result = self._service.cse().list(**search_params).execute()
 
@@ -133,6 +145,60 @@ class GoogleSearchService:
             print(f"HTTP Error at start_index {start_index}: {e}")
         except Exception as e:
             print(f"Error at start_index {start_index}: {e}")
+
+        return None
+
+    @staticmethod
+    def _format_date(date_str: str | None) -> str | None:
+        """Normalize a date string to YYYYMMDD or return None if invalid.
+
+        Accepts "YYYY-MM-DD" or "YYYYMMDD". Returns None if parsing fails.
+        """
+        if not date_str:
+            return None
+        value = date_str.strip()
+        if not value:
+            return None
+        try:
+            if "-" in value:
+                dt = datetime.strptime(value, "%Y-%m-%d")
+                return dt.strftime("%Y%m%d")
+            # Assume already compact format
+            if len(value) == 8 and value.isdigit():
+                # Basic validation by attempting parse
+                dt = datetime.strptime(value, "%Y%m%d")
+                return dt.strftime("%Y%m%d")
+        except ValueError:
+            pass
+        print(f"Warning: invalid date format '{date_str}'. Expected YYYY-MM-DD or YYYYMMDD. Ignoring.")
+        return None
+
+    def _build_sort_param(
+        self,
+        sort_by_date: bool,
+        date_from: str | None,
+        date_to: str | None,
+    ) -> str | None:
+        """Build the Google CSE 'sort' parameter based on options.
+
+        - If a date range is provided, use 'date:r:YYYYMMDD:YYYYMMDD'.
+        - Else if sort_by_date is True, use 'date'.
+        - Otherwise, return None.
+        """
+        start = self._format_date(date_from)
+        end = self._format_date(date_to)
+
+        if start or end:
+            # Default start to a very early date if only end provided
+            if not start:
+                start = "19700101"
+            # Default end to today (UTC) if only start provided
+            if not end:
+                end = datetime.now(timezone.utc).strftime("%Y%m%d")
+            return f"date:r:{start}:{end}"
+
+        if sort_by_date:
+            return "date"
 
         return None
 

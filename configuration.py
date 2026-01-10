@@ -11,6 +11,10 @@ class SearchConfig:
     max_results: int = 100
     sort_by_date: bool = True
     region: str = "ua"
+    # Optional absolute date range for filtering Google results (CSE 'sort' param)
+    # Acceptable formats: "YYYY-MM-DD" or "YYYYMMDD". Leave as None to ignore.
+    date_from: str | None = None
+    date_to: str | None = None
 
 
 @dataclass(frozen=True)
