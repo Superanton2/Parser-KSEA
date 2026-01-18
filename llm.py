@@ -1,5 +1,6 @@
 import os
 from openai import OpenAI
+from configuration import HF_API_KEY
 
 # Constants
 DEFAULT_BASE_URL = "https://router.huggingface.co/v1"
@@ -25,7 +26,7 @@ class LLM:
         self.model_name = model_name
         self.client = OpenAI(
             base_url=base_url or DEFAULT_BASE_URL,
-            api_key=api_key or os.getenv("HF_API_KEY"),
+            api_key=api_key or HF_API_KEY,
         )
 
     def _create_completion(self, prompt: str, max_tokens: int = 10, temperature: float = 0.0) -> str:

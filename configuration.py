@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+import os
 
+HF_API_KEY: Final[str] = os.getenv("")
 
 @dataclass(frozen=True)
 class SearchConfig:
@@ -109,8 +111,9 @@ REWRITE_NAMES: Final[dict[str, str]] = {
 BLACKLISTED_DOMAINS: Final[list[str]] = [
     "kse.ua", "vk.com", "facebook.com", "linkedin.com", "instagram.com", "opendatabot.ua", "t.me",
     "tiktok.com", "letterboxd.com", "goodreads.com", "scholar.google.com", "academia.edu", "scribd.com",
-    "youcontrol.com", "swrailway.gov.ua", "sinoptik.ua", "gismeteo.ua", "meteo.gov.ua",
-    "medicalplaza.ua", "khmilclinic.com.ua", "blagovist.ua", "vkursi.pro", "scanbe.io",
+    "journals.sagepub.com", "freepolicybriefs.org",
+    "youcontrol.com", "swrailway.gov.ua", "sinoptik.ua", "gismeteo.ua", "agroberichtenbuitenland.nl"
+    "medicalplaza.ua", "khmilclinic.com.ua", "blagovist.ua", "vkursi.pro", "scanbe.io", "meteo.gov.ua",
     "olx.ua", "prom.ua", "rozetka.com.ua", "hotline.ua", "petition.president.gov.ua",
     "itbox.ua", "foxtrot.com.ua", "kabanchik.ua", "work.ua", "rabota.ua", "ua.jooble.org",
     "e-schools.info", "shkola.ua", "dpa.testportal.gov.ua", "data-ua.com", "snu.edu.ua",
@@ -177,7 +180,8 @@ LINKS_TO_REMOVE: Final[list[str]] = [
     "https://voxukraine.org/authors/vladyslav-ordeha", "https://voxukraine.org/authors/ellina-yurchenko",
     "https://www.youtube.com/@%D0%94%D1%83%D1%88%D0%BA%D0%BE%D0%94%D0%BC%D0%B8%D1%82%D1%80%D0%BE",
     "https://freepolicybriefs.org/speaker_category/author/", "https://www.youtube.com/watch?v=gPHqA71BFWc",
-    "https://www.youtube.com/watch?v=4h1nqwbV1v0", "https://www.youtube.com/watch?v=kt0U1xilRAI"
+    "https://www.youtube.com/watch?v=4h1nqwbV1v0", "https://www.youtube.com/watch?v=kt0U1xilRAI",
+    "https://www.oei.fu-berlin.de/en/wirtschaft/UKRAINE/Profile/Oleg-Nivievskyi.html"
 ]
 
 # Legacy compatibility
