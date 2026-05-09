@@ -285,10 +285,10 @@ class GoogleSearchService:
             person: The person/query name.
             results: Search results for this person.
         """
-            if not results:
-                writer.writerow([person, "", "", "", ""])
-                logger.debug("No results found for %s", person)
-                return
+        if not results:
+            writer.writerow([person, "", "", "", ""])
+            logger.debug("No results found for %s", person)
+            return
 
         for item in results:
             row_data = self._extract_csv_row(person, item)
