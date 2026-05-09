@@ -1,5 +1,4 @@
 import os
-import json
 import shutil
 import subprocess
 from typing import Optional
@@ -12,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_BASE_URL = "https://router.huggingface.co/v1"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 # A more robust few-shot detection prompt (RAG-style) with examples and
 # a short checklist. The model should answer only 'Yes' or 'No'.
@@ -27,7 +27,7 @@ ARTICLE_DETECTION_PROMPT = (
     "Respond ONLY with 'Yes' if it's an article, otherwise 'No'.\n\n"
     "Example 1:\nTitle: Local festival draws crowds\nBody: Thousands of people gathered... (full paragraph)\nAnswer: Yes\n\n"
     "Example 2:\nSnippet: Contact us at info@example.com or call 123-456\nAnswer: No\n\n"
-    "Now classify the following text:\n\n{text}\n\nAnswer:"
+    "Now classify the following text:\n\n{text}\n\nContext: {context}\nAnswer:"
 )
 
 SYSTEM_PROMPT = "You are a strict classifier that must output only Yes or No."
@@ -53,6 +53,8 @@ class LLM:
     ) -> None:
         self.model_name = model_name
         self.base_url = base_url or DEFAULT_BASE_URL
+        # Ollama always uses its own local URL; `base_url` is only for the remote client.
+        self.ollama_base_url = OLLAMA_BASE_URL
         self.use_ollama = bool(use_ollama)
 
         # Resolve API key from provided value or environment variables
@@ -114,17 +116,24 @@ class LLM:
         """
         # HTTP endpoint attempt
         try:
-            url = (self.base_url or "http://localhost:11434").rstrip("/") + \
-                "/api/generate"
-            payload = {"model": self.model_name,
-                       "prompt": prompt, "max_tokens": max_tokens}
+            url = self.ollama_base_url.rstrip("/") + "/api/generate"
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "num_predict": max_tokens,
+                "stream": False,
+            }
             r = requests.post(url, json=payload, timeout=30)
             r.raise_for_status()
             data = r.json()
 
             # Try common response shapes
             if isinstance(data, dict):
-                # Ollama sometimes returns {'model':..., 'results':[{'content':...}]}
+                # Ollama /api/generate returns {"response": "..."}
+                if "response" in data and isinstance(data["response"], str):
+                    return data["response"].strip()
+
+                # Fallback: other nested shapes
                 results = data.get("results") or data.get("choices")
                 if results and isinstance(results, list):
                     # search nested dicts for text fields
@@ -186,12 +195,7 @@ class LLM:
             return False
 
         heur = self._heuristic_context(text)
-        base_prompt = ARTICLE_DETECTION_PROMPT.format(text=text[:2000]).rstrip()
-        if base_prompt.endswith("Answer:"):
-            prompt = base_prompt[:-len("Answer:")].rstrip() + \
-                f"\n\nContext: {heur}\nAnswer:"
-        else:
-            prompt = base_prompt + f"\n\nContext: {heur}\nAnswer:"
+        prompt = ARTICLE_DETECTION_PROMPT.format(text=text[:2000], context=heur)
         answer = self._create_completion(prompt, max_tokens=8, temperature=0.0)
         if not answer:
             # Fallback heuristic: long text with multiple paragraphs -> article

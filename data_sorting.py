@@ -254,7 +254,7 @@ class DataSorting:
         logger.info("Filling blank slots completed.")
         return self
 
-    def apply_ai_filter(self) -> None:
+    def apply_ai_filter(self) -> Self:
         """Filter out rows where the `Title text` is not an article according to the LLM.
 
         Instantiates the LLM once and builds a boolean mask to avoid repeatedly
