@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Type aliases for clarity
@@ -70,7 +73,7 @@ class GoogleSearchService:
             Empty list if no results or on error.
         """
         decoded_query = urllib.parse.unquote(query)
-        print(f"Searching for: {decoded_query}")
+        logger.info("Searching for: %s", decoded_query)
 
         all_results: SearchResults = []
         max_results = min(max_results, self.MAX_RESULTS_PER_QUERY)
@@ -92,12 +95,12 @@ class GoogleSearchService:
             all_results.extend(results)
 
             for item in results:
-                print(f"Found: {item.get('link', 'N/A')}")
+                logger.debug("Found: %s", item.get("link", "N/A"))
 
             if len(all_results) >= max_results:
                 break
 
-        print(f"Total results found: {len(all_results)}")
+        logger.info("Total results found: %d", len(all_results))
         return all_results
 
     def _fetch_page(
@@ -142,9 +145,9 @@ class GoogleSearchService:
             return result.get("items")
 
         except HttpError as e:
-            print(f"HTTP Error at start_index {start_index}: {e}")
+            logger.error("HTTP Error at start_index %s: %s", start_index, e)
         except Exception as e:
-            print(f"Error at start_index {start_index}: {e}")
+            logger.error("Error at start_index %s: %s", start_index, e)
 
         return None
 
@@ -170,7 +173,7 @@ class GoogleSearchService:
                 return dt.strftime("%Y%m%d")
         except ValueError:
             pass
-        print(f"Warning: invalid date format '{date_str}'. Expected YYYY-MM-DD or YYYYMMDD. Ignoring.")
+        logger.warning("invalid date format '%s'. Expected YYYY-MM-DD or YYYYMMDD. Ignoring.", date_str)
         return None
 
     def _build_sort_param(
@@ -220,7 +223,7 @@ class GoogleSearchService:
         results: QueryResults = {}
 
         for query in queries:
-            print(f"\nProcessing query: {query}")
+            logger.info("Processing query: %s", query)
             results[query] = self.search(query, **search_params)
 
         return results
@@ -244,7 +247,7 @@ class GoogleSearchService:
 
         filepath.write_text("\n".join(links) + "\n", encoding="utf-8")
 
-        print(f"Saved {len(links)} links to {filepath}")
+        logger.info("Saved %d links to %s", len(links), filepath)
         return len(links)
 
     def save_to_csv(
@@ -267,7 +270,7 @@ class GoogleSearchService:
             for person, results in queries_results.items():
                 self._write_person_results(writer, person, results)
 
-        print(f"\nResults saved to {filepath}")
+        logger.info("Results saved to %s", filepath)
 
     def _write_person_results(
         self,
@@ -282,16 +285,16 @@ class GoogleSearchService:
             person: The person/query name.
             results: Search results for this person.
         """
-        if not results:
-            writer.writerow([person, "", "", "", ""])
-            print(f"No results found for {person}")
-            return
+            if not results:
+                writer.writerow([person, "", "", "", ""])
+                logger.debug("No results found for %s", person)
+                return
 
         for item in results:
             row_data = self._extract_csv_row(person, item)
             writer.writerow(row_data)
 
-        print(f"Added {len(results)} results for '{person}'")
+        logger.info("Added %d results for '%s'", len(results), person)
 
     def _extract_csv_row(self, person: str, item: SearchResult) -> list[str]:
         """Extract and format data for a CSV row.

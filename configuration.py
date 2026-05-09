@@ -46,6 +46,9 @@ OUTPUT_CONFIG: Final = OutputConfig()
 API_KEY: Final[str] = SEARCH_CONFIG.api_key
 SEARCH_ENGINE_ID: Final[str] = SEARCH_CONFIG.search_engine_id
 
+# Default model for local/remote LLM usage. Change to your preferred model.
+LLM_MODEL: Final[str] = "gemma4:e4b"
+
 SEARCH_QUERY: Final[list[str]] = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
     "Агроцентр KSE",
@@ -92,22 +95,22 @@ SEARCH_QUERY: Final[list[str]] = [
 ]
 
 REWRITE_NAMES: Final[dict[str, str]] = {
-    "Center for Food and Land Use Research (KSE Agrocenter)" : "KSE Agrocenter",
-    "Агроцентр KSE" : "KSE Agrocenter",
-    "Oleg Nivievskyi" : "Oleh Nivievskyi",
-    "Олег Нів’євський" : "Oleh Nivievskyi",
-    "Марія Богонос" : "Mariia Bogonos",
-    "Павло Мартишев" : "Pavlo Martyshev",
-    "Валентин Літвінов" : "Valentyn Litvinov",
-    "Іван Колодяжний" : "Ivan Kolodiazhnyi",
-    "Елліна Юрченко" : "Ellina Iurchenko",
-    "Роксолана Назаркіна" : "Roksolana Nazarkina",
-    "Артур Бурак" : "Artur Burak",
-    "Дмитро Тесленко" : "Dmytro Tеslеnko",
-    "Дмитро Душко" : "Dmytro Dushko",
-    "Григорій Стольнікович" : "Hryhorii Stolnikovych",
-    "Роман Нейтер" : "Roman Neyter",
-    "Ігор Піддубний" : "Igor Piddubnyi",
+    "Center for Food and Land Use Research (KSE Agrocenter)": "KSE Agrocenter",
+    "Агроцентр KSE": "KSE Agrocenter",
+    "Oleg Nivievskyi": "Oleh Nivievskyi",
+    "Олег Нів’євський": "Oleh Nivievskyi",
+    "Марія Богонос": "Mariia Bogonos",
+    "Павло Мартишев": "Pavlo Martyshev",
+    "Валентин Літвінов": "Valentyn Litvinov",
+    "Іван Колодяжний": "Ivan Kolodiazhnyi",
+    "Елліна Юрченко": "Ellina Iurchenko",
+    "Роксолана Назаркіна": "Roksolana Nazarkina",
+    "Артур Бурак": "Artur Burak",
+    "Дмитро Тесленко": "Dmytro Tеslеnko",
+    "Дмитро Душко": "Dmytro Dushko",
+    "Григорій Стольнікович": "Hryhorii Stolnikovych",
+    "Роман Нейтер": "Roman Neyter",
+    "Ігор Піддубний": "Igor Piddubnyi",
 }
 
 BLACKLISTED_DOMAINS: Final[list[str]] = [
@@ -129,7 +132,7 @@ BLACKLISTED_DOMAINS: Final[list[str]] = [
     "publications.jrc.ec.europa.eu", "opsaa.iica.int", "iopscience.iop.org", "sciencedirect.com",
     "od.vgorode.ua", "gurt.org.ua", "ostroh.info", "inneco.org", "dev.ua", "lvet.edu.ua",
     "maryanivskatg.gov.ua", "ecd.tdmu.edu.ua", "kiu.europa-uni.de", "supernet.isenberg.umass.edu",
-    "papers.ssrn.com", "x.com", "universityworldnews.com", "vhptu5.vn.ua", "savvy.ua"
+    "papers.ssrn.com", "x.com", "universityworldnews.com", "vhptu5.vn.ua", "savvy.ua",
     "academic.oup.com", "arxiv.org", "tandfonline.com", "ageconsearch.umn.edu", "a95.ua",
     "ukr-revolution.history.org.ua", "agromaster.info", "shpolyanochka.com.ua", "repo.btu.kharkiv.ua",
     "kr-rada.gov.ua", "biotechuniv.edu.ua", "uk.wikipedia.org", "chesno.org", "open.spotify.com",
@@ -186,4 +189,3 @@ LINKS_TO_REMOVE: Final[list[str]] = [
 
 # Legacy compatibility
 links_to_remove = LINKS_TO_REMOVE
-
