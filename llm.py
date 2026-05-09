@@ -186,8 +186,12 @@ class LLM:
             return False
 
         heur = self._heuristic_context(text)
-        prompt = ARTICLE_DETECTION_PROMPT.format(
-            text=text[:2000]) + f"\n\nContext: {heur}\nAnswer:"
+        base_prompt = ARTICLE_DETECTION_PROMPT.format(text=text[:2000]).rstrip()
+        if base_prompt.endswith("Answer:"):
+            prompt = base_prompt[:-len("Answer:")].rstrip() + \
+                f"\n\nContext: {heur}\nAnswer:"
+        else:
+            prompt = base_prompt + f"\n\nContext: {heur}\nAnswer:"
         answer = self._create_completion(prompt, max_tokens=8, temperature=0.0)
         if not answer:
             # Fallback heuristic: long text with multiple paragraphs -> article
