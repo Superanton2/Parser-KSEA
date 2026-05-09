@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pandas as pd
 
+import logging
+
 from configuration import (
     SEARCH_QUERY,
     API_KEY,
@@ -28,7 +30,7 @@ def perform_search(
     Returns:
         Dictionary mapping queries to their search results.
     """
-    print("Starting Google Custom Search API operations\n")
+    logging.getLogger(__name__).info("Starting Google Custom Search API operations")
     return search_service.search_multiple_queries(
         search_queries,
         max_results=SEARCH_CONFIG.max_results,
@@ -71,12 +73,12 @@ def process_and_sort_data(input_csv: Path, output_csv: Path) -> None:
         input_csv: Path to input CSV with raw search results.
         output_csv: Path for sorted output CSV.
     """
-    print("\nStarting Data Processing:")
+    logging.getLogger(__name__).info("Starting Data Processing")
 
     df = pd.read_csv(input_csv)
     sorter = DataSorting(df)
 
-    print("Data preparation...")
+    logging.getLogger(__name__).info("Data preparation...")
     sorter.remove_duplicates().rename_person()
     sorter.remove_by_links(links=LINKS_TO_REMOVE)
 
@@ -92,7 +94,7 @@ def process_and_sort_data(input_csv: Path, output_csv: Path) -> None:
     sorter.sort_by_column("Date", ascending=True)
     sorter.dataframe.to_csv(output_csv, index=False)
 
-    print(f"Sorted data saved to {output_csv}")
+    logging.getLogger(__name__).info("Sorted data saved to %s", output_csv)
 
 
 def main(search_queries: list[str]) -> None:
@@ -119,14 +121,15 @@ def main(search_queries: list[str]) -> None:
         links_txt,
     )
 
-    print("\nAll search operations completed successfully!")
+    logging.getLogger(__name__).info("All search operations completed successfully!")
 
     # Process and sort data
     sorted_csv = OUTPUT_CONFIG.sorted_results_path
     process_and_sort_data(raw_csv, sorted_csv)
 
-    print("\nFinish")
+    logging.getLogger(__name__).info("Finish")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     main(SEARCH_QUERY)

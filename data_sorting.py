@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Self
+from typing import Self, Optional
+import logging
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -9,8 +10,10 @@ from bs4 import BeautifulSoup
 from htmldate import find_date
 from newspaper import Article
 
-from configuration import REWRITE_NAMES, BLACKLISTED_DOMAINS, URL_STOP_WORDS
+from configuration import REWRITE_NAMES, BLACKLISTED_DOMAINS, URL_STOP_WORDS, LLM_MODEL
 from llm import LLM
+
+logger = logging.getLogger(__name__)
 
 
 class DataSorting:
@@ -24,12 +27,12 @@ class DataSorting:
 
     # Default settings
     DEFAULT_MAX_TEXT_LENGTH = 1500
-
     def __init__(
             self,
             dataframe: pd.DataFrame,
             blacklisted_domains: list[str] | None = None,
             url_stop_words: list[str] | None = None,
+            llm: Optional[LLM] = None,
     ) -> None:
         """Initialize the DataSorting class with a DataFrame and filter settings.
 
@@ -41,6 +44,7 @@ class DataSorting:
         self.dataframe = dataframe
         self.blacklisted_domains = blacklisted_domains or BLACKLISTED_DOMAINS
         self.url_stop_words = url_stop_words or URL_STOP_WORDS
+        self.llm = llm
 
     def sort_by_column(
             self,
@@ -64,9 +68,11 @@ class DataSorting:
             ValueError: If column_name does not exist in the DataFrame.
         """
         if column_name not in self.dataframe.columns:
-            raise ValueError(f"Column '{column_name}' does not exist in the DataFrame.")
+            raise ValueError(
+                f"Column '{column_name}' does not exist in the DataFrame.")
 
-        sorted_df = self.dataframe.sort_values(by=column_name, ascending=ascending)
+        sorted_df = self.dataframe.sort_values(
+            by=column_name, ascending=ascending)
 
         if inplace:
             self.dataframe = sorted_df
@@ -94,9 +100,11 @@ class DataSorting:
         Raises:
             ValueError: If any column does not exist in the DataFrame.
         """
-        missing_cols = [col for col in columns if col not in self.dataframe.columns]
+        missing_cols = [
+            col for col in columns if col not in self.dataframe.columns]
         if missing_cols:
-            raise ValueError(f"Columns {missing_cols} do not exist in the DataFrame.")
+            raise ValueError(
+                f"Columns {missing_cols} do not exist in the DataFrame.")
 
         sorted_df = self.dataframe.sort_values(by=columns, ascending=ascending)
 
@@ -173,7 +181,7 @@ class DataSorting:
         self.dataframe = self.dataframe[mask]
 
         removed_count = initial_count - len(self.dataframe)
-        print(f"URL filter removed {removed_count} irrelevant links.")
+        logger.info("URL filter removed %d irrelevant links.", removed_count)
         return self
 
     def _check_relevance(self, url: str) -> bool:
@@ -233,27 +241,44 @@ class DataSorting:
         Returns:
             Self for method chaining.
         """
-        print(f"Processing {len(self.dataframe)} links...")
+        logger.info("Processing %d links...", len(self.dataframe))
 
         if self.COL_TITLE_TEXT not in self.dataframe.columns:
             self.dataframe[self.COL_TITLE_TEXT] = None
 
         for index, row in self.dataframe.iterrows():
             link = row[self.COL_LINK]
-            print(f"[{index}]: {link}")
+            logger.debug("Processing index %s: %s", index, link)
             self._fill_single_blank_slot(index)
 
-        print("Filling blank slots completed.")
+        logger.info("Filling blank slots completed.")
         return self
 
-    def apply_ai_filter(self) -> None:
-        llm = LLM(model_name="openai/gpt-oss-safeguard-20b:groq")
-        for article in self.dataframe["Title text"]:
-            if pd.isna(article):
+    def apply_ai_filter(self) -> Self:
+        """Filter out rows where the `Title text` is not an article according to the LLM.
+
+        Instantiates the LLM once and builds a boolean mask to avoid repeatedly
+        reassigning `self.dataframe` inside the loop.
+        """
+        # Use injected LLM if provided, otherwise create a default local-first LLM
+        llm = self.llm or LLM(model_name=LLM_MODEL, use_ollama=True)
+        masks: list[bool] = []
+        for val in self.dataframe[self.COL_TITLE_TEXT]:
+            if pd.isna(val):
+                # Keep rows without text (they may be filled later)
+                masks.append(True)
                 continue
-            is_article = llm.is_article(article)
-            if not is_article:
-                self.dataframe = self.dataframe[self.dataframe["Title text"] != article]
+            try:
+                is_article = llm.is_article(val)
+            except Exception as e:
+                logger.error("LLM classification error: %s", e)
+                # On error, be conservative and keep the row
+                is_article = True
+            masks.append(bool(is_article))
+
+        self.dataframe = self.dataframe[pd.Series(
+            masks, index=self.dataframe.index)]
+        return self
 
     def _fill_single_blank_slot(self, index: int) -> bool:
         """Fill missing data for a single row.
@@ -270,7 +295,7 @@ class DataSorting:
         link = self.dataframe.at[index, self.COL_LINK]
 
         if pd.isna(link) or link == "":
-            print("No link value for this index")
+            logger.debug("No link value for this index")
             return False
 
         self._parse_with_newspaper(index)
@@ -305,7 +330,7 @@ class DataSorting:
             article.download()
             article.parse()
         except Exception as e:
-            print(f"Newspaper parsing error: {e}")
+            logger.debug("Newspaper parsing error: %s", e)
             return False
 
         if article.text:
@@ -340,12 +365,16 @@ class DataSorting:
         if pd.isna(self.dataframe.at[index, self.COL_TITLE_TEXT]):
             try:
                 response = requests.get(url, timeout=10)
+                response.raise_for_status()
                 soup = BeautifulSoup(response.text, "lxml")
                 article_text = soup.get_text()
                 clean_text = " ".join(article_text.split())
                 self.dataframe.at[index, self.COL_TITLE_TEXT] = clean_text[:max_text_length]
+            except requests.RequestException as e:
+                logger.debug("Requests parsing error: %s", e)
+                return False
             except Exception as e:
-                print(f"Requests parsing error: {e}")
+                logger.debug("Unexpected parsing error: %s", e)
                 return False
 
         return True
@@ -372,6 +401,6 @@ class DataSorting:
                 return True
 
         except Exception as e:
-            print(f"Date finding error: {e}")
+            logger.debug("Date finding error: %s", e)
 
         return False
