@@ -1,141 +1,138 @@
-import logging
-from typing import Any
-import gspread
-import pandas as pd
-from gspread_dataframe import set_with_dataframe
+import pytest
+from google_sheets_manager import GoogleSheetsManager
 
-logger = logging.getLogger(__name__)
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
+SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "KSE_Agrocenter_Parser")
+
+@pytest.fixture(scope="module")
+def sheet_manager():
+    """
+    Initialize the connection once for all tests in this module.
+    """
+    manager = GoogleSheetsManager(CREDENTIALS_PATH, SPREADSHEET_NAME)
+    return manager
 
 
-class GoogleSheetsManager:
-    def __init__(self, credentials_path: str, spreadsheet_name: str):
-        """
-        Initialize connection to Google Sheets via Service Account.
+def test_get_search_queries_returns_correct_type(sheet_manager):
+    """Test the basic return types of the function."""
+    queries = sheet_manager.get_search_queries()
 
-        Args:
-            credentials_path (str): Path to the JSON key file for the service account.
-            spreadsheet_name (str): Name of the target Google Spreadsheet document.
+    assert isinstance(queries, list), "The function should return a list."
+    assert len(queries) > 0, "The list of queries should not be empty."
+    assert all(isinstance(q, str) for q in queries), "All elements in the list must be strings."
 
-        Returns:
-            None
-        """
-        try:
-            self.gc = gspread.service_account(filename=credentials_path)
-            self.sh = self.gc.open(spreadsheet_name)
-            logger.info("Successfully connected to Google Sheets: %s", spreadsheet_name)
-        except Exception as e:
-            logger.error("Failed to connect to Google Sheets: %s", e)
-            raise
 
-    def get_search_queries(self) -> list[str]:
-        """
-        Fetch and parse search queries from the 'Search_Queries' worksheet.
+def test_get_search_queries_includes_definitely_priority(sheet_manager):
+    """
+    Test if individuals with the 'Definitely' priority are included in the results.
+    Data is based on rows 3 and 4 of the provided spreadsheet.
+    """
+    queries = sheet_manager.get_search_queries()
 
-        Filters out rows where Priority is 'Optional'. Combines 'Member ENG',
-        'Member UKR', and comma-separated entries from 'Pronounciations' into
-        a single flat list of unique search terms.
+    for q in queries:
+        print(q, end=" / ")
+    assert "Oleh Nivievskyi" in queries, "English name with 'Definitely' priority not found."
+    assert "Олег Нів'євський" in queries, "Ukrainian name with 'Definitely' priority not found."
 
-        Args:
-            None
+    assert "Mariia Bogonos" in queries
+    assert "Марія Богонос" in queries
+    assert "Artur Burak" not in queries
 
-        Returns:
-            list[str]: A list of unique, stripped search query terms.
-        """
-        worksheet = self.sh.worksheet("Search_Queries")
-        records = worksheet.get_all_records()
-        queries = set()
 
-        for row in records:
-            # Skip rows marked as Optional priority
-            priority = str(row.get("Priority", "")).strip().lower()
-            if priority == "optional":
-                continue
+def test_get_search_queries_excludes_optional_priority(sheet_manager):
+    """
+    Test if the function correctly ignores rows with 'Optional' priority.
+    Data is based on rows 7, 10, and 12 of the provided spreadsheet.
+    """
+    queries = sheet_manager.get_search_queries()
 
-            eng_name = str(row.get("Member ENG", "")).strip()
-            ukr_name = str(row.get("Member UKR", "")).strip()
-            # pronunciations_raw = str(row.get("Pronounciations", "")).strip()
+    assert "Ivan Kolodiazhnyi" not in queries, "Optional name (Ivan Kolodiazhnyi) was included in the list!"
+    assert "Іван Колодяжний" not in queries
 
-            if eng_name:
-                queries.add(eng_name)
-            if ukr_name:
-                queries.add(ukr_name)
+    assert "Artur Burak" not in queries, "Optional name (Artur Burak) was included in the list!"
+    assert "Hryhorii Stolnikovych" not in queries
 
-            # # Split comma-separated alternative names/misspellings
-            # if pronunciations_raw:
-            #     parts = [p.strip() for p in pronunciations_raw.split(",") if p.strip()]
-            #     for part in parts:
-            #         cleaned_part = part.strip("'\"")
-            #         if cleaned_part:
-            #             queries.add(cleaned_part)
 
-        return list(queries)
+def test_get_search_queries_no_duplicates(sheet_manager):
+    """
+    Test that there are no duplicates in the final list (the function should use a set).
+    """
+    queries = sheet_manager.get_search_queries()
 
-    def get_blacklists(self) -> dict[str, list[str]]:
-        """
-        Read domain and keyword blacklists from the 'Blacklists' worksheet.
+    assert len(queries) == len(set(queries)), "There are duplicate queries in the final list."
 
-        Args:
-            None
 
-        Returns:
-            dict[str, list[str]]: A dictionary containing lists for 'domains',
-                'stop_words', and 'links_to_remove'.
-        """
-        worksheet = self.sh.worksheet("Blacklists")
-        data = worksheet.get_all_values()
+def test_get_search_queries_default_behavior(sheet_manager):
+    """
+    Test the default behavior of the function.
+    Expected: save_optional=False, save_pronounciations=False.
+    It should exclude 'Optional' priorities and exclude pronunciations.
+    """
+    queries = sheet_manager.get_search_queries()
 
-        domains, stop_words, links = [], [], []
-        for row in data[1:]:
-            if len(row) > 0 and row[0].strip():
-                domains.append(row[0].strip())
-            if len(row) > 1 and row[1].strip():
-                stop_words.append(row[1].strip())
-            if len(row) > 2 and row[2].strip():
-                links.append(row[2].strip())
+    # Check that definitely included members are present
+    assert "Oleh Nivievskyi" in queries
 
-        return {
-            "domains": domains,
-            "stop_words": stop_words,
-            "links_to_remove": links
-        }
+    # Check that optional members are EXCLUDED
+    assert "Ivan Kolodiazhnyi" not in queries
+    assert "Artur Burak" not in queries
 
-    def get_bot_params(self) -> dict[str, Any]:
-        """
-        Read runtime configuration key-value pairs from 'Bot_Params' worksheet.
+    # Check that pronunciations are EXCLUDED (Oleg Nivievskyi is a pronunciation)
+    assert "Oleg Nivievskyi" not in queries
 
-        Args:
-            None
 
-        Returns:
-            dict[str, Any]: Key-value configuration parameters.
-        """
-        worksheet = self.sh.worksheet("Bot_Params")
-        records = worksheet.get_all_records()
-        params = {}
-        for row in records:
-            if "Key" in row and "Value" in row:
-                params[row["Key"]] = row["Value"]
-        return params
+def test_get_search_queries_with_optional_true(sheet_manager):
+    """
+    Test the function with save_optional=True and save_pronounciations=False.
+    Expected: It should INCLUDE 'Optional' priorities, but exclude pronunciations.
+    """
+    queries = sheet_manager.get_search_queries(save_optional=True)
 
-    def append_results(self, df: pd.DataFrame) -> None:
-        """
-        Append processed search result records to the end of 'Results' worksheet.
+    # Check that optional members are now INCLUDED
+    assert "Ivan Kolodiazhnyi" in queries
+    assert "Іван Колодяжний" in queries
+    assert "Artur Burak" in queries
 
-        Inserts a 'Verified' column at the beginning if not already present.
+    # Check that pronunciations are still EXCLUDED
+    assert "Oleg Nivievskyi" not in queries
 
-        Args:
-            df (pd.DataFrame): Sorted data containing news mentions.
 
-        Returns:
-            None
-        """
-        worksheet = self.sh.worksheet("Results")
+def test_get_search_queries_with_pronunciations_true(sheet_manager):
+    """
+    Test the function with save_optional=False and save_pronounciations=True.
+    Expected: It should EXCLUDE 'Optional' priorities, but include pronunciations.
+    """
+    queries = sheet_manager.get_search_queries(save_pronounciations=True)
 
-        if "Verified" not in df.columns:
-            df.insert(0, "Verified", False)
+    # Check that optional members are still EXCLUDED
+    assert "Ivan Kolodiazhnyi" not in queries
 
-        existing_data = worksheet.get_all_values()
-        next_row = len(existing_data) + 1
+    # Check that pronunciations are now INCLUDED
+    assert "Oleg Nivievskyi" in queries
 
-        set_with_dataframe(worksheet, df, row=next_row, include_column_header=False)
-        logger.info("Successfully appended %d rows to the 'Results' sheet.", len(df))
+    # Check multiple pronunciations for Mariia Bogonos (Row 4)
+    assert "Maria Bogonos" in queries
+    assert "Marija Bogonos" in queries
+
+
+def test_get_search_queries_all_options_true(sheet_manager):
+    """
+    Test the function with both parameters set to True.
+    Expected: It should INCLUDE 'Optional' priorities AND include pronunciations.
+    """
+    queries = sheet_manager.get_search_queries(save_optional=True, save_pronounciations=True)
+
+    # Check definitely included members
+    assert "Oleh Nivievskyi" in queries
+
+    # Check optional members
+    assert "Ivan Kolodiazhnyi" in queries
+    assert "Artur Burak" in queries
+
+    # Check pronunciations
+    assert "Oleg Nivievskyi" in queries
+    assert "Maria Bogonos" in queries
