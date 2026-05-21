@@ -47,7 +47,7 @@ API_KEY: Final[str] = SEARCH_CONFIG.api_key
 SEARCH_ENGINE_ID: Final[str] = SEARCH_CONFIG.search_engine_id
 
 # Default model for local/remote LLM usage. Change to your preferred model.
-LLM_MODEL: Final[str] = "gemma4:e4b"
+LLM_MODEL: Final[str] = "gemma:2b"
 
 SEARCH_QUERY: Final[list[str]] = [
     "Center for Food and Land Use Research (KSE Agrocenter)",
@@ -172,6 +172,7 @@ url_stop_words = URL_STOP_WORDS
 
 LINKS_TO_REMOVE: Final[list[str]] = [
     ".pdf", ".ru",
+    "https://t.me/s/kseagrocenter",
     "https://www.bbc.com/ukrainian/news-62062756",
     "https://www.ukr.net/news/details/fotoreportazh/107095360.html",
     "https://voxukraine.org/authors/oleg-nivyevskij", "https://www.youtube.com/watch?v=ph1DKPOf9_s",
