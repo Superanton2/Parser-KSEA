@@ -12,8 +12,7 @@ from configuration import (
 )
 from data_sorting import DataSorting
 from google_search_service import GoogleSearchService
-from google_sheets_manager import GoogleSheetsManager
-
+from google_sheets_manager import GoogleSheetsManager, GoogleSheetsLogHandler
 
 def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
     """
@@ -28,8 +27,20 @@ def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
     logger.info("Initialize all services and get config data")
 
     gs_manager = GoogleSheetsManager(credentials_path, spreadsheet_name)
-
     bot_params = gs_manager.get_bot_params()
+
+    batch_size = int(bot_params.get("LOG_BATCH_SIZE", 25))
+    gs_handler = GoogleSheetsLogHandler(gs_manager, batch_size=batch_size)
+    gs_handler.setLevel(logging.INFO)
+
+    gs_formatter = logging.Formatter('%(message)s')
+    gs_handler.setFormatter(gs_formatter)
+
+    logging.getLogger().addHandler(gs_handler)
+
+    logger = logging.getLogger(__name__)
+    logger.info("Initialize all services and get config data")
+
     search_queries = gs_manager.get_search_queries()
     blacklists = gs_manager.get_blacklists()
 
@@ -192,7 +203,7 @@ def main() -> None:
     save_to_Google_Drive(bot_params, gs_manager, raw_csv, sorted_csv)
 
     logging.getLogger(__name__).info("Finish")
-
+    logging.shutdown()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

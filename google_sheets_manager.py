@@ -1,5 +1,7 @@
 import os
 import logging
+import threading
+import datetime
 from typing import Any
 
 import pandas as pd
@@ -35,9 +37,28 @@ class GoogleSheetsManager:
             self.gc = gspread.service_account(filename=credentials_path)
             self.sh = self.gc.open(spreadsheet_name)
             logger.info("Successfully connected to Google Sheets: %s", spreadsheet_name)
+            self.initialize_blacklists()
         except Exception as e:
             logger.error("Failed to connect to Google Sheets: %s", e)
             raise
+
+    def initialize_blacklists(self) -> None:
+        """
+        Checks if the 'Blacklists' worksheet is empty. If it is, populates it
+        with headers so the user can fill them in manually.
+        """
+        try:
+            worksheet = self.sh.worksheet("Blacklists")
+            first_row = worksheet.row_values(1)
+
+            if not first_row:
+                logger.info("Blacklists sheet is empty. Initializing with headers...")
+                headers = [["Domains", "Stop Words", "Links to Remove", "Rewrite (Old)", "Rewrite (New)"]]
+
+                worksheet.update(values=headers, range_name="A1")
+                logger.info("Blacklists sheet headers initialized.")
+        except Exception as e:
+            logger.error("Failed to initialize Blacklists: %s", e)
 
 
     def get_search_queries(self, save_optional= False, save_pronounciations= False) -> list[str]:
@@ -62,10 +83,10 @@ class GoogleSheetsManager:
         queries = set()
 
         for row in records:
-            self._process_one_row_from_records(row, save_optional, save_pronounciations, queries)
+            self._process_one_row_of_queries(row, save_optional, save_pronounciations, queries)
         return list(queries)
 
-    def _process_one_row_from_records(self, row, save_optional, save_pronounciations, queries):
+    def _process_one_row_of_queries(self, row, save_optional, save_pronounciations, queries):
         """
         Processes a single row and adds valid names to the queries set.
 
@@ -190,7 +211,10 @@ class GoogleSheetsManager:
             creds = Credentials.from_service_account_file(self.credentials_path, scopes=scopes)
             drive_service = build('drive', 'v3', credentials=creds)
 
-            file_name = os.path.basename(file_path)
+            original_name = os.path.basename(file_path)
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+            file_name = f"{timestamp}_{original_name}"
+
             file_metadata = {
                 'name': file_name,
                 'parents': [folder_id]
@@ -249,3 +273,92 @@ class GoogleSheetsManager:
             worksheet.append_row(["sorted_csv_link", sorted_link])
 
         logger.info("Successfully saved Drive links to Dashboard.")
+
+    def insert_logs_batch(self, logs_batch: list[list[str]]) -> None:
+        """
+        Inserts a batch of logs at the top of the 'Logs' worksheet (row 2).
+        Pushes existing rows down.
+        """
+        try:
+            worksheet = self.sh.worksheet("Logs")
+            worksheet.insert_rows(logs_batch, row=2)
+        except Exception as e:
+            # Fallback to console if sheet insert fails
+            print(f"Background Log Upload Failed: {e}")
+
+    def get_blacklists(self) -> dict[str, Any]:
+        """
+        Reads domain, keyword blacklists, and rewrite rules from the 'Blacklists' worksheet.
+        """
+        worksheet = self.sh.worksheet("Blacklists")
+        data = worksheet.get_all_values()
+
+        domains, stop_words, links = [], [], []
+        rewrite_names = {}
+
+        for row in data[1:]:
+            row += [""] * (5 - len(row))
+
+            if row[0].strip():
+                domains.append(row[0].strip())
+            if row[1].strip():
+                stop_words.append(row[1].strip())
+            if row[2].strip():
+                links.append(row[2].strip())
+            if row[3].strip() and row[4].strip():
+                rewrite_names[row[3].strip()] = row[4].strip()
+
+        return {
+            "domains": domains,
+            "stop_words": stop_words,
+            "links_to_remove": links,
+            "rewrite_names": rewrite_names
+        }
+
+class GoogleSheetsLogHandler(logging.Handler):
+    """
+    A custom logging handler that batches log messages and uploads them
+    to a Google Sheets 'Logs' worksheet in the background.
+    """
+
+    def __init__(self, gs_manager, batch_size: int = 10):
+        super().__init__()
+        self.gs_manager = gs_manager
+        self.batch_size = batch_size
+        self.log_batch = []
+        self._batch_lock = threading.Lock()
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            dt_string = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Format: [Level, Time, Message]
+            row = [record.levelname, dt_string, msg]
+
+            with self._batch_lock:
+                # Insert at index 0 so the newest log is at the top of the batch
+                self.log_batch.insert(0, row)
+
+                if len(self.log_batch) >= self.batch_size:
+                    batch_to_send = self.log_batch.copy()
+                    self.log_batch.clear()
+
+                    # Запускаємо завантаження у фоновому потоці
+                    threading.Thread(
+                        target=self.gs_manager.insert_logs_batch,
+                        args=(batch_to_send,),
+                        daemon=True
+                    ).start()
+        except Exception:
+            self.handleError(record)
+
+    def flush(self):
+        """Force upload any remaining logs."""
+        super().flush()  # Викликаємо базовий flush для надійності
+        with self._batch_lock:
+            if self.log_batch:
+                batch_to_send = self.log_batch.copy()
+                self.log_batch.clear()
+                # Відправляємо залишки
+                self.gs_manager.insert_logs_batch(batch_to_send)
