@@ -1,13 +1,24 @@
+import os
 import logging
 from typing import Any
-import gspread
+
 import pandas as pd
+
+import gspread
 from gspread_dataframe import set_with_dataframe
+
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 logger = logging.getLogger(__name__)
 
 
 class GoogleSheetsManager:
+    """
+    Manages Google Sheets and Google Drive API interactions for the KSE Agrocenter Parser.
+    """
+
     def __init__(self, credentials_path: str, spreadsheet_name: str):
         """
         Initialize connection to Google Sheets via Service Account.
@@ -19,6 +30,7 @@ class GoogleSheetsManager:
         Returns:
             None
         """
+        self.credentials_path = credentials_path
         try:
             self.gc = gspread.service_account(filename=credentials_path)
             self.sh = self.gc.open(spreadsheet_name)
@@ -160,3 +172,80 @@ class GoogleSheetsManager:
 
         set_with_dataframe(worksheet, df, row=next_row, include_column_header=False)
         logger.info("Successfully appended %d rows to the 'Results' sheet.", len(df))
+
+
+    def upload_file_to_drive(self, file_path: str, folder_id: str) -> str:
+        """
+        Uploads a local file to a Google Drive folder and returns a shareable link.
+
+        Args:
+            file_path (str): Local path to the file.
+            folder_id (str): Google Drive target folder ID.
+
+        Returns:
+            str: The web view link of the uploaded file.
+        """
+        try:
+            scopes = ['https://www.googleapis.com/auth/drive']
+            creds = Credentials.from_service_account_file(self.credentials_path, scopes=scopes)
+            drive_service = build('drive', 'v3', credentials=creds)
+
+            file_name = os.path.basename(file_path)
+            file_metadata = {
+                'name': file_name,
+                'parents': [folder_id]
+            }
+
+            media = MediaFileUpload(file_path, resumable=True)
+
+            file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+
+            drive_service.permissions().create(
+                fileId=file.get('id'),
+                body={'type': 'anyone', 'role': 'reader'},
+                supportsAllDrives=True
+            ).execute()
+
+            logger.info("Successfully uploaded %s to Google Drive.", file_name)
+            return file.get('webViewLink')
+
+        except Exception as e:
+            logger.error("Failed to upload %s to Drive: %s", file_path, e)
+            return "Failed to upload"
+
+    def save_links_to_dashboard(self, raw_link: str, sorted_link: str) -> None:
+        """
+        Saves or updates the generated Google Drive links in the 'Dashboard' worksheet.
+        Looks for 'raw_csv_link' and 'sorted_csv_link'.
+        If found - updates them, if not - creates new rows.
+        """
+        worksheet = self.sh.worksheet("Dashboard")
+        data = worksheet.get_all_values()
+
+        raw_row = None
+        sorted_row = None
+
+        for idx, row in enumerate(data):
+            if not row: continue
+            key = str(row[0]).strip()
+            if key == "raw_csv_link":
+                raw_row = idx + 1
+            elif key == "sorted_csv_link":
+                sorted_row = idx + 1
+
+        if raw_row:
+            worksheet.update_cell(raw_row, 2, raw_link)
+        else:
+            worksheet.append_row(["raw_csv_link", raw_link])
+
+        if sorted_row:
+            worksheet.update_cell(sorted_row, 2, sorted_link)
+        else:
+            worksheet.append_row(["sorted_csv_link", sorted_link])
+
+        logger.info("Successfully saved Drive links to Dashboard.")

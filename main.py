@@ -41,7 +41,7 @@ def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
         date_to=bot_params.get("DATE_TO", None)
     )
 
-    return gs_manager, search_config, search_queries, blacklists
+    return gs_manager, search_config, search_queries, blacklists, bot_params
 
 def perform_search(
     search_queries: list[str],
@@ -141,6 +141,21 @@ def process_and_sort_data(
     logging.getLogger(__name__).info("Sorted data saved to Google Sheets.")
 
 
+def save_to_Google_Drive(bot_params, gs_manager, raw_csv, sorted_csv):
+    # Save to Google Drive
+    drive_folder_id = bot_params.get("drive_folder_id")
+    if not drive_folder_id:
+        logging.getLogger(__name__).warning("No 'drive_folder_id' found in Bot_Params. Skipping Drive upload.")
+        return
+
+    logging.getLogger(__name__).info("Uploading CSV results to Google Drive...")
+
+    raw_link = gs_manager.upload_file_to_drive(str(raw_csv), drive_folder_id)
+    sorted_link = gs_manager.upload_file_to_drive(str(sorted_csv), drive_folder_id)
+
+    gs_manager.save_links_to_dashboard(raw_link, sorted_link)
+
+
 def main() -> None:
     """
     Main function that orchestrates the search and sorting pipeline.
@@ -148,7 +163,7 @@ def main() -> None:
     CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
     SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "KSE_Agrocenter_Parser")
 
-    gs_manager, search_config, search_queries, blacklists = init_environment(
+    gs_manager, search_config, search_queries, blacklists, bot_params = init_environment(
         CREDENTIALS_PATH, SPREADSHEET_NAME
     )
 
@@ -174,6 +189,7 @@ def main() -> None:
     # Process and sort data
     sorted_csv = OUTPUT_CONFIG.sorted_results_path
     process_and_sort_data(raw_csv, sorted_csv, blacklists, gs_manager)
+    save_to_Google_Drive(bot_params, gs_manager, raw_csv, sorted_csv)
 
     logging.getLogger(__name__).info("Finish")
 
