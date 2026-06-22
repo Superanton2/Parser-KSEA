@@ -60,9 +60,6 @@ def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
 
     logging.getLogger().addHandler(gs_handler)
 
-    logger = logging.getLogger(__name__)
-    logger.info("Initialize all services and get config data")
-
     search_queries = gs_manager.get_search_queries()
     blacklists = gs_manager.get_blacklists()
 
