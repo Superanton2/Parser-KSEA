@@ -163,7 +163,12 @@ class GoogleSearchService:
         if status == 429:
             return True
         if status == 403:
-            return any(token in str(error).lower() for token in _QUOTA_REASONS)
+            haystack = str(error).lower()
+            content = getattr(error, "content", b"") or b""
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", "ignore")
+            haystack += str(content).lower()
+            return any(token in haystack for token in _QUOTA_REASONS)
         return False
 
     def _fetch_page(

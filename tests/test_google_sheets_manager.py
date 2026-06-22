@@ -18,11 +18,12 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def sheet_manager():
-    """
-    Initialize the connection once for all tests in this module.
-    """
-    manager = GoogleSheetsManager(CREDENTIALS_PATH, SPREADSHEET_NAME)
-    return manager
+    """Initialize the Google Sheets connection (integration test)."""
+    if not os.getenv("RUN_INTEGRATION_TESTS") or not os.path.exists(CREDENTIALS_PATH):
+        pytest.skip(
+            "Integration test requires RUN_INTEGRATION_TESTS=1 and a valid GOOGLE_CREDENTIALS_PATH."
+        )
+    return GoogleSheetsManager(CREDENTIALS_PATH, SPREADSHEET_NAME)
 
 
 def test_get_search_queries_returns_correct_type(sheet_manager):
