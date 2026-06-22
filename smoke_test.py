@@ -3,6 +3,16 @@ on real objects with fake Google services and a fake LLM (no network, no creds).
 
 Run: .venv/bin/python smoke_test.py
 """
+
+# This is a manual smoke-test script; skip it during pytest collection.
+if __name__ != "__main__":
+    import pytest
+
+    pytest.skip(
+        "smoke_test.py is a manual smoke-test script; skip during pytest collection",
+        allow_module_level=True,
+    )
+
 import logging
 import tempfile
 from pathlib import Path
