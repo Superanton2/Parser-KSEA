@@ -32,3 +32,21 @@ def test_corrupt_file_starts_fresh(tmp_path):
     path.write_text("{not valid json", encoding="utf-8")
     s = StateManager(path)
     assert s.all_results() == {}
+
+
+def test_record_failure_counts_and_persists(tmp_path):
+    path = tmp_path / "state.json"
+    s = StateManager(path)
+    assert s.record_failure("q") == 1
+    assert s.record_failure("q") == 2
+    # persists across instances
+    assert StateManager(path).record_failure("q") == 3
+
+
+def test_mark_done_clears_failures(tmp_path):
+    path = tmp_path / "state.json"
+    s = StateManager(path)
+    s.record_failure("q")
+    s.mark_done("q", [{"link": "x"}])
+    # a fresh instance should see no lingering failure count for the query
+    assert StateManager(path).record_failure("q") == 1

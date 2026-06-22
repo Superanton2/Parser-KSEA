@@ -27,27 +27,35 @@ class StateManager:
         self.path = Path(path)
         # query -> list of result items already fetched for that query
         self._completed: dict[str, SearchResults] = {}
+        # query -> number of failed (non-quota) attempts so far
+        self._failures: dict[str, int] = {}
         self.load()
 
     def load(self) -> None:
         """Load checkpoint from disk if it exists; start fresh otherwise."""
         if not self.path.exists():
             self._completed = {}
+            self._failures = {}
             return
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             self._completed = raw.get("completed", {})
+            self._failures = raw.get("failures", {})
             logger.info("Loaded search state: %d queries already done.", len(self._completed))
         except (json.JSONDecodeError, OSError) as e:
             logger.error("Could not read state file %s: %s. Starting fresh.", self.path, e)
             self._completed = {}
+            self._failures = {}
 
     def _save(self) -> None:
         """Atomically write the checkpoint to disk."""
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
             tmp.write_text(
-                json.dumps({"completed": self._completed}, ensure_ascii=False, indent=2),
+                json.dumps(
+                    {"completed": self._completed, "failures": self._failures},
+                    ensure_ascii=False, indent=2,
+                ),
                 encoding="utf-8",
             )
             tmp.replace(self.path)
@@ -61,7 +69,17 @@ class StateManager:
     def mark_done(self, query: str, results: SearchResults) -> None:
         """Record a query's results and persist the checkpoint immediately."""
         self._completed[query] = results
+        self._failures.pop(query, None)
         self._save()
+
+    def record_failure(self, query: str) -> int:
+        """Increment and persist the failed-attempt count for a query.
+
+        Returns the new cumulative failure count.
+        """
+        self._failures[query] = self._failures.get(query, 0) + 1
+        self._save()
+        return self._failures[query]
 
     def get_results(self, query: str) -> SearchResults:
         """Return stored results for a completed query (empty list if none)."""
@@ -74,6 +92,7 @@ class StateManager:
     def clear(self) -> None:
         """Drop all state and delete the checkpoint file (run fully finished)."""
         self._completed = {}
+        self._failures = {}
         try:
             self.path.unlink(missing_ok=True)
         except OSError as e:

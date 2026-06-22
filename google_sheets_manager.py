@@ -310,10 +310,23 @@ class GoogleSheetsManager:
             "rewrite_names": rewrite_names
         }
 
+# Third-party logger prefixes whose records should NOT be shipped to the Sheet
+# (they are noisy and, for gspread/googleapiclient, would feed back on upload).
+_NOISY_LOGGER_PREFIXES = (
+    "googleapiclient", "google.", "google_auth", "urllib3", "htmldate",
+    "newspaper", "requests", "httpx", "httpcore", "gspread", "oauthlib",
+    "feedparser", "charset", "PIL", "chardet",
+)
+
+
 class GoogleSheetsLogHandler(logging.Handler):
     """
     A custom logging handler that batches log messages and uploads them
     to a Google Sheets 'Logs' worksheet in the background.
+
+    Only application log records are shipped; noisy third-party libraries
+    (and gspread itself, which would otherwise feed back during upload) are
+    filtered out so the Logs sheet stays readable and cheap to write.
     """
 
     def __init__(self, gs_manager, batch_size: int = 10):
@@ -324,6 +337,8 @@ class GoogleSheetsLogHandler(logging.Handler):
         self._batch_lock = threading.Lock()
 
     def emit(self, record):
+        if record.name.startswith(_NOISY_LOGGER_PREFIXES):
+            return
         try:
             msg = self.format(record)
             dt_string = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

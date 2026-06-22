@@ -11,11 +11,15 @@ from configuration import (
     OUTPUT_CONFIG,
 )
 from data_sorting import DataSorting
-from google_search_service import GoogleSearchService, QuotaExceededError
+from google_search_service import GoogleSearchService, QuotaExceededError, SearchError
 from searxng_service import SearxngSearchService
 from google_sheets_manager import GoogleSheetsManager, GoogleSheetsLogHandler
 from llm import LLM
 from state_manager import StateManager
+
+# How many times a query may fail (non-quota) across runs before we give up on
+# it and record an empty result, so one broken query can't block the pipeline.
+MAX_QUERY_ATTEMPTS = 3
 
 
 def build_search_service(bot_params: dict, search_config: SearchConfig):
@@ -130,6 +134,22 @@ def perform_search(
             )
             complete = False
             break
+        except SearchError as e:
+            attempts = state.record_failure(query)
+            if attempts >= MAX_QUERY_ATTEMPTS:
+                logger.error(
+                    "Query '%s' failed %d times (%s); recording empty and moving on.",
+                    query, attempts, e,
+                )
+                state.mark_done(query, [])
+                results_by_person[query] = []
+            else:
+                logger.warning(
+                    "Query '%s' failed (attempt %d/%d): %s. Will retry on the next run.",
+                    query, attempts, MAX_QUERY_ATTEMPTS, e,
+                )
+                complete = False
+            continue
 
         state.mark_done(query, results)
         results_by_person[query] = results

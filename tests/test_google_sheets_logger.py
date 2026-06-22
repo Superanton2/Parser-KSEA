@@ -12,6 +12,13 @@ load_dotenv()
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
 SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "KSE_Agrocenter_Parser")
 
+# Live integration test that writes to the real Logs sheet. Opt in explicitly
+# so it never runs (and mutates real data) in CI or a normal run.
+pytestmark = pytest.mark.skipif(
+    not (os.getenv("RUN_INTEGRATION_TESTS") and os.path.exists(CREDENTIALS_PATH)),
+    reason="integration test: set RUN_INTEGRATION_TESTS=1 and provide credentials.json",
+)
+
 
 @pytest.fixture(scope="module")
 def sheet_manager():

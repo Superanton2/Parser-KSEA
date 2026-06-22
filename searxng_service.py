@@ -16,7 +16,7 @@ from typing import Any
 
 import requests
 
-from google_search_service import GoogleSearchService, QuotaExceededError, logger
+from google_search_service import GoogleSearchService, QuotaExceededError, SearchError, logger
 
 
 class SearxngSearchService(GoogleSearchService):
@@ -53,7 +53,16 @@ class SearxngSearchService(GoogleSearchService):
         seen: set[str] = set()
 
         for page in range(1, 11):  # SearXNG paginates; cap to avoid runaway loops
-            items = self._fetch_searx_page(decoded_query, page, region)
+            try:
+                items = self._fetch_searx_page(decoded_query, page, region)
+            except SearchError:
+                if all_results:
+                    logger.warning(
+                        "SearXNG page error after partial results for '%s'; returning %d.",
+                        decoded_query, len(all_results),
+                    )
+                    break
+                raise
             if not items:
                 break
 
@@ -90,7 +99,7 @@ class SearxngSearchService(GoogleSearchService):
             )
         except requests.RequestException as e:
             logger.error("SearXNG request failed (page %s): %s", page, e)
-            return None
+            raise SearchError(str(e)) from e
 
         if resp.status_code == 429:
             # Mirror the CSE quota signal so the StateManager can checkpoint.
@@ -98,13 +107,13 @@ class SearxngSearchService(GoogleSearchService):
             raise QuotaExceededError("SearXNG returned HTTP 429")
         if resp.status_code != 200:
             logger.error("SearXNG returned HTTP %s on page %s.", resp.status_code, page)
-            return None
+            raise SearchError(f"SearXNG HTTP {resp.status_code}")
 
         try:
             data = resp.json()
-        except ValueError:
+        except ValueError as e:
             logger.error("SearXNG response was not JSON — is the 'json' format enabled in settings.yml?")
-            return None
+            raise SearchError("SearXNG response was not JSON") from e
 
         # Be polite to the instance between pages.
         time.sleep(0.5)
