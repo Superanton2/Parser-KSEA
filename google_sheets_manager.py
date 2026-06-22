@@ -16,6 +16,30 @@ from googleapiclient.http import MediaFileUpload
 logger = logging.getLogger(__name__)
 
 
+class CaseInsensitiveParams(dict):
+    """A dict whose key lookups ignore case.
+
+    Bot_Params keys are entered by hand in the sheet with inconsistent casing
+    (e.g. ``api_key`` vs ``LLM_MODEL``). This lets call sites read a key with
+    any casing and still find it.
+    """
+
+    def __init__(self, data: dict | None = None) -> None:
+        super().__init__(data or {})
+        self._lower = {k.lower(): k for k in self.keys()}
+
+    def get(self, key, default=None):
+        real = self._lower.get(str(key).lower())
+        return super().get(real, default) if real is not None else default
+
+    def __getitem__(self, key):
+        real = self._lower.get(str(key).lower(), key)
+        return super().__getitem__(real)
+
+    def __contains__(self, key):
+        return str(key).lower() in self._lower
+
+
 class GoogleSheetsManager:
     """
     Manages Google Sheets and Google Drive API interactions for the KSE Agrocenter Parser.
@@ -115,35 +139,6 @@ class GoogleSheetsManager:
                 if cleaned_part:
                     queries.add(cleaned_part)
 
-    def get_blacklists(self) -> dict[str, list[str]]:
-        """
-        Read domain and keyword blacklists from the 'Blacklists' worksheet.
-
-        Args:
-            None
-
-        Returns:
-            dict[str, list[str]]: A dictionary containing lists for 'domains',
-                'stop_words', and 'links_to_remove'.
-        """
-        worksheet = self.sh.worksheet("Blacklists")
-        data = worksheet.get_all_values()
-
-        domains, stop_words, links = [], [], []
-        for row in data[1:]:
-            if len(row) > 0 and row[0].strip():
-                domains.append(row[0].strip())
-            if len(row) > 1 and row[1].strip():
-                stop_words.append(row[1].strip())
-            if len(row) > 2 and row[2].strip():
-                links.append(row[2].strip())
-
-        return {
-            "domains": domains,
-            "stop_words": stop_words,
-            "links_to_remove": links
-        }
-
     def get_bot_params(self) -> dict[str, Any]:
         """
         Read runtime configuration key-value pairs from 'Bot_Params' worksheet.
@@ -169,7 +164,7 @@ class GoogleSheetsManager:
         for row in records:
             if "Key" in row and "Value" in row and row["Key"].strip():
                 params[row["Key"]] = row["Value"]
-        return params
+        return CaseInsensitiveParams(params)
 
     def append_results(self, df: pd.DataFrame) -> None:
         """

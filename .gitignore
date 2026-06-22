@@ -72,6 +72,10 @@ google_search_results.csv
 google_links_sorted.csv
 google_links.txt
 
+# Resumable run checkpoint
+search_state.json
+search_state.json.tmp
+
 # Jupyter
 .ipynb_checkpoints
 

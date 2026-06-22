@@ -11,8 +11,30 @@ from configuration import (
     OUTPUT_CONFIG,
 )
 from data_sorting import DataSorting
-from google_search_service import GoogleSearchService
+from google_search_service import GoogleSearchService, QuotaExceededError
+from searxng_service import SearxngSearchService
 from google_sheets_manager import GoogleSheetsManager, GoogleSheetsLogHandler
+from llm import LLM
+from state_manager import StateManager
+
+
+def build_search_service(bot_params: dict, search_config: SearchConfig):
+    """Pick the search backend based on config (SEARCH_PROVIDER key/env).
+
+    'searxng' uses a self-hosted SearXNG instance (SEARXNG_URL); anything else
+    (default) uses the Google Custom Search API.
+    """
+    provider = str(
+        bot_params.get("SEARCH_PROVIDER") or os.getenv("SEARCH_PROVIDER", "google")
+    ).strip().lower()
+
+    if provider == "searxng":
+        base_url = bot_params.get("SEARXNG_URL") or os.getenv("SEARXNG_URL", "http://localhost:8888")
+        logging.getLogger(__name__).info("Using SearXNG search backend at %s", base_url)
+        return SearxngSearchService(base_url=base_url)
+
+    logging.getLogger(__name__).info("Using Google Custom Search backend")
+    return GoogleSearchService(search_config.api_key, search_config.search_engine_id)
 
 def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
     """
@@ -44,10 +66,14 @@ def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
     search_queries = gs_manager.get_search_queries()
     blacklists = gs_manager.get_blacklists()
 
+    # MAX_RESULTS env var overrides the sheet value (useful for bounding runs
+    # against the daily quota or for quick tests).
+    max_results = int(os.getenv("MAX_RESULTS") or bot_params.get("MAX_RESULTS", 100))
+
     search_config = SearchConfig(
         api_key=bot_params.get("API_KEY", ""),
         search_engine_id=bot_params.get("SEARCH_ENGINE_ID", ""),
-        max_results=int(bot_params.get("MAX_RESULTS", 100)),
+        max_results=max_results,
         date_from=bot_params.get("DATE_FROM", None),
         date_to=bot_params.get("DATE_TO", None)
     )
@@ -57,28 +83,58 @@ def init_environment(credentials_path: str, spreadsheet_name: str) -> tuple:
 def perform_search(
     search_queries: list[str],
     search_service: GoogleSearchService,
-    search_config: SearchConfig
-) -> dict[str, list[dict]]:
+    search_config: SearchConfig,
+    state: StateManager,
+) -> tuple[dict[str, list[dict]], bool]:
     """
-    Perform Google searches for multiple queries.
+    Perform Google searches for multiple queries, resuming from saved state.
+
+    Queries already completed in an earlier run are skipped (their cached
+    results are reused). If the search quota is exhausted mid-run, progress is
+    checkpointed and the function returns early with ``complete=False`` so a
+    later run can finish the remaining queries.
 
     Args:
         search_queries: List of search terms/names to search for.
         search_service: Configured GoogleSearchService instance.
-        search_config: Configuration for Search
+        search_config: Configuration for Search.
+        state: StateManager holding per-query checkpoint data.
 
     Returns:
-        Dictionary mapping queries to their search results.
+        Tuple of (results mapping query -> results, complete flag).
     """
-    logging.getLogger(__name__).info("Starting Google Custom Search API operations")
-    return search_service.search_multiple_queries(
-        search_queries,
-        max_results=search_config.max_results,
-        sort_by_date=search_config.sort_by_date,
-        region=search_config.region,
-        date_from=search_config.date_from,
-        date_to=search_config.date_to,
-    )
+    logger = logging.getLogger(__name__)
+    logger.info("Starting Google Custom Search API operations")
+
+    results_by_person: dict[str, list[dict]] = state.all_results()
+    complete = True
+
+    for query in search_queries:
+        if state.is_done(query):
+            logger.debug("Skipping already-completed query: %s", query)
+            continue
+        try:
+            results = search_service.search(
+                query,
+                max_results=search_config.max_results,
+                sort_by_date=search_config.sort_by_date,
+                region=search_config.region,
+                date_from=search_config.date_from,
+                date_to=search_config.date_to,
+            )
+        except QuotaExceededError:
+            logger.warning(
+                "Search quota exhausted on query '%s'. Checkpointing; "
+                "remaining queries will run on the next scheduled execution.",
+                query,
+            )
+            complete = False
+            break
+
+        state.mark_done(query, results)
+        results_by_person[query] = results
+
+    return results_by_person, complete
 
 
 def save_search_results(
@@ -109,7 +165,8 @@ def process_and_sort_data(
         input_csv: Path,
         output_csv: Path,
         blacklists: dict,
-        gs_manager: GoogleSheetsManager
+        gs_manager: GoogleSheetsManager,
+        llm: LLM | None = None,
 ) -> None:
     """
     Process and sort the search results data.
@@ -117,17 +174,20 @@ def process_and_sort_data(
     Args:
         input_csv: Path to input CSV with raw search results.
         output_csv: Path for sorted output CSV.
-        blacklists: Dictionary of link to remove
-        gs_manager:
+        blacklists: Dict with 'domains', 'stop_words', 'links_to_remove',
+            and 'rewrite_names'.
+        gs_manager: Sheets manager used to append the final results.
+        llm: Optional LLM instance for the relevance filter.
     """
     logging.getLogger(__name__).info("Starting Data Processing")
 
     df = pd.read_csv(input_csv)
-    sorter = DataSorting(df)
     sorter = DataSorting(
         df,
         blacklisted_domains=blacklists["domains"],
-        url_stop_words=blacklists["stop_words"]
+        url_stop_words=blacklists["stop_words"],
+        rewrite_names=blacklists.get("rewrite_names", {}),
+        llm=llm,
     )
 
     logging.getLogger(__name__).info("Data preparation...")
@@ -140,15 +200,21 @@ def process_and_sort_data(
     # Fill missing data
     sorter.fill_all_blank_slots()
 
-    sorter.apply_ai_filter()
+    # Score relevance 0-5 instead of dropping rows; humans triage in the sheet.
+    sorter.add_relevance_scores()
 
-    # Sort and save
-    sorter.sort_by_column("Date", ascending=True)
-    sorter.dataframe.to_csv(output_csv, index=False)
+    # Most relevant first, then newest.
+    sorter.sort_by_multiple_columns(["Relevance", "Date"], ascending=[False, False])
 
+    # Surface the score and key fields up front for easy review/transfer.
+    df = sorter.dataframe
+    lead = [c for c in ["Relevance", "Person", "Title", "Date", "Source", "Link"] if c in df.columns]
+    df = df[lead + [c for c in df.columns if c not in lead]]
+
+    df.to_csv(output_csv, index=False)
     logging.getLogger(__name__).info("Sorted data saved to %s", output_csv)
 
-    gs_manager.append_results(sorter.dataframe)
+    gs_manager.append_results(df)
     logging.getLogger(__name__).info("Sorted data saved to Google Sheets.")
 
 
@@ -171,20 +237,26 @@ def main() -> None:
     """
     Main function that orchestrates the search and sorting pipeline.
     """
+    logger = logging.getLogger(__name__)
+
     CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
     SPREADSHEET_NAME = os.getenv("SPREADSHEET_NAME", "KSE_Agrocenter_Parser")
+    STATE_PATH = os.getenv("SEARCH_STATE_PATH", "search_state.json")
 
     gs_manager, search_config, search_queries, blacklists, bot_params = init_environment(
         CREDENTIALS_PATH, SPREADSHEET_NAME
     )
 
-    # Initialize the search service
-    search_service = GoogleSearchService(search_config.api_key, search_config.search_engine_id)
+    # Initialize the search service (Google CSE or SearXNG) and resumable state
+    search_service = build_search_service(bot_params, search_config)
+    state = StateManager(STATE_PATH)
 
-    # Perform searches
-    results_by_person = perform_search(search_queries, search_service, search_config)
+    # Perform searches (resumes from checkpoint; may stop early on quota)
+    results_by_person, complete = perform_search(
+        search_queries, search_service, search_config, state
+    )
 
-    # Save raw results
+    # Save raw results (whatever we have so far) so links can be reviewed
     raw_csv = OUTPUT_CONFIG.search_results_path
     links_txt = OUTPUT_CONFIG.links_path
     save_search_results(
@@ -195,14 +267,34 @@ def main() -> None:
         links_txt,
     )
 
-    logging.getLogger(__name__).info("All search operations completed successfully!")
+    if not complete:
+        logger.warning(
+            "Run incomplete: search quota was exhausted. Raw results saved to %s. "
+            "The next scheduled run will resume the remaining queries.",
+            raw_csv,
+        )
+        logging.shutdown()
+        return
+
+    logger.info("All search operations completed successfully!")
+
+    # Build the LLM used by the relevance filter. Model/backend come from
+    # Bot_Params, with env overrides (LLM_MODEL, USE_OLLAMA) for ops tuning.
+    llm_model = os.getenv("LLM_MODEL") or bot_params.get("LLM_MODEL", "llama3.1:8b")
+    use_ollama = str(
+        os.getenv("USE_OLLAMA") or bot_params.get("USE_OLLAMA", "true")
+    ).strip().lower() in ("1", "true", "yes")
+    llm = LLM(model_name=llm_model, use_ollama=use_ollama)
 
     # Process and sort data
     sorted_csv = OUTPUT_CONFIG.sorted_results_path
-    process_and_sort_data(raw_csv, sorted_csv, blacklists, gs_manager)
+    process_and_sort_data(raw_csv, sorted_csv, blacklists, gs_manager, llm=llm)
     save_to_Google_Drive(bot_params, gs_manager, raw_csv, sorted_csv)
 
-    logging.getLogger(__name__).info("Finish")
+    # Full run finished — clear checkpoint so the next run starts fresh
+    state.clear()
+
+    logger.info("Finish")
     logging.shutdown()
 
 if __name__ == "__main__":

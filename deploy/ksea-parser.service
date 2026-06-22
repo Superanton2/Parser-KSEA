@@ -1,0 +1,22 @@
+[Unit]
+Description=KSE Agrocenter publication parser (one-shot run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# --- Adjust these three to your server layout ---
+WorkingDirectory=/opt/parser-ksea
+ExecStart=/opt/parser-ksea/venv/bin/python main.py
+User=parser
+
+# Credentials / spreadsheet config live in an env file (not committed).
+# Create /opt/parser-ksea/.env with e.g.:
+#   GOOGLE_CREDENTIALS_PATH=/opt/parser-ksea/credentials.json
+#   SPREADSHEET_NAME=KSE_Agrocenter_Parser
+#   SEARCH_STATE_PATH=/opt/parser-ksea/search_state.json
+EnvironmentFile=/opt/parser-ksea/.env
+
+# Quota-exhausted runs exit 0 (incomplete but expected); real crashes exit non-zero.
+TimeoutStartSec=3600

@@ -15,6 +15,13 @@ class FakeLLM:
                 return val
         return True
 
+    def score_relevance(self, person: str, title: str, text: str) -> int:
+        # Deterministic: score by substring presence in the text
+        for key, val in self.answers.items():
+            if key in (text or ""):
+                return val
+        return 3
+
 
 def make_df(rows):
     return pd.DataFrame(rows)
@@ -61,7 +68,7 @@ def test_rename_person():
     df = make_df([
         {"Link": "l", "Person": "Oleg Nivievskyi"},
     ])
-    sorter = DataSorting(df)
+    sorter = DataSorting(df, rewrite_names={"Oleg Nivievskyi": "Oleh Nivievskyi"})
     sorter.rename_person()
     assert "Oleh Nivievskyi" in sorter.dataframe["Person"].iloc[0]
 
@@ -105,6 +112,19 @@ def test_apply_ai_filter_with_injected_llm():
     sorter = DataSorting(df, llm=fake)
     sorter.apply_ai_filter()
     assert len(sorter.dataframe) == 1
+
+
+def test_add_relevance_scores_keeps_all_rows():
+    df = make_df([
+        {"Link": "l1", "Person": "p", "Title": "t1", "Title text": "irrelevant SPAM here"},
+        {"Link": "l2", "Person": "p", "Title": "t2", "Title text": "a real article body"},
+    ])
+    fake = FakeLLM({"SPAM": 0, "real article": 5})
+    sorter = DataSorting(df, llm=fake)
+    sorter.add_relevance_scores()
+    # No rows dropped, and a Relevance column with the expected scores exists.
+    assert len(sorter.dataframe) == 2
+    assert list(sorter.dataframe["Relevance"]) == [0, 5]
 
 
 def test_check_relevance_and_is_domain_blacklisted():

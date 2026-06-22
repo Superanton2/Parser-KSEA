@@ -11,6 +11,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class QuotaExceededError(Exception):
+    """Raised when the search backend reports the daily/rate quota is exhausted.
+
+    Signals the pipeline to checkpoint progress and stop, so a later run
+    (e.g. the next day) can resume from where it left off.
+    """
+
+
+# HTTP statuses that indicate the free Custom Search quota is exhausted.
+_QUOTA_STATUSES = frozenset({429, 403})
+
+
 # Type aliases for clarity
 SearchResult = dict[str, Any]
 SearchResults = list[SearchResult]
@@ -145,6 +157,10 @@ class GoogleSearchService:
             return result.get("items")
 
         except HttpError as e:
+            status = getattr(getattr(e, "resp", None), "status", None)
+            if status in _QUOTA_STATUSES:
+                logger.warning("Search quota exhausted (HTTP %s) at start_index %s.", status, start_index)
+                raise QuotaExceededError(str(e)) from e
             logger.error("HTTP Error at start_index %s: %s", start_index, e)
         except Exception as e:
             logger.error("Error at start_index %s: %s", start_index, e)

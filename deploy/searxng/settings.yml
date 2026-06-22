@@ -1,0 +1,15 @@
+# Minimal SearXNG config for the KSE parser.
+# Enables the JSON API the parser needs and disables the bot limiter for
+# local/self-hosted use. For production, set a strong secret_key.
+use_default_settings: true
+
+server:
+  secret_key: "ksea-dev-secret-change-in-prod"
+  limiter: false
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 0
