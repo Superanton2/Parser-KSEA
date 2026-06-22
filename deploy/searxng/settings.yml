@@ -4,7 +4,7 @@
 use_default_settings: true
 
 server:
-  secret_key: "ksea-dev-secret-change-in-prod"
+  secret_key: "CHANGE_ME"
   limiter: false
   image_proxy: false
 
