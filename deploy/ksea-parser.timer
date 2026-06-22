@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the KSE Agrocenter parser once a day
+
+[Timer]
+# Run daily at 04:00 server time; the Google CSE free quota resets daily,
+# so an incomplete (quota-limited) run resumes on the next firing.
+OnCalendar=*-*-* 04:00:00
+# Spread load / avoid hammering exactly on the minute.
+RandomizedDelaySec=900
+# If the machine was off at 04:00, run as soon as it comes back up.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

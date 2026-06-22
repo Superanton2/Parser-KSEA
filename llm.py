@@ -32,6 +32,40 @@ ARTICLE_DETECTION_PROMPT = (
 
 SYSTEM_PROMPT = "You are a strict classifier that must output only Yes or No."
 
+# Relevance scoring prompt: judges BOTH whether the page is about the right
+# person/entity AND whether it is a genuine news/article publication.
+RELEVANCE_SCORE_PROMPT = (
+    "You score how relevant a web page is as a NEWS/ARTICLE publication about a "
+    "specific person or organization linked to the KSE Agrocenter (Center for Food "
+    "and Land Use Research, Kyiv School of Economics). The targets are real, "
+    "present-day economists/analysts/researchers working on agriculture, land use, "
+    "food and agrarian economics in Ukraine.\n\n"
+    "Target person/entity: {person}\n"
+    "Page title: {title}\n"
+    "Page text excerpt:\n{text}\n\n"
+    "CRITICAL: the page must be about THIS real expert/organization in an "
+    "agriculture/economics context. If it is about a DIFFERENT person who merely "
+    "shares the name (e.g. an artist, athlete, soldier), or about a book, novel, "
+    "film, TV series, historical or fictional character, or an unrelated product, "
+    "score 0 or 1 — no matter how long the text is.\n\n"
+    "Give an integer score from 0 to 5:\n"
+    "5 = a news article / report / analysis clearly about or substantially featuring the target in its agri-economics work\n"
+    "4 = a news article meaningfully mentioning the target in a relevant context\n"
+    "3 = a relevant article where the target is only briefly mentioned\n"
+    "2 = a genuine profile / directory / listing / social-media page of the correct target (not a news article)\n"
+    "1 = only tangentially related, or likely a different person/entity with the same name\n"
+    "0 = irrelevant: wrong namesake, book/film/TV/fiction, spam, navigation, login, catalog, or unrelated content\n\n"
+    "Examples:\n"
+    "- Target 'Roksolana Nazarkina'; page is the historical novel 'Roksolana' by Osyp Nazaruk about a 16th-century "
+    "sultan's wife -> 0 (fiction about a different, historical namesake)\n"
+    "- Target 'Roksolana'; page is the TV series 'Magnificent Century / Величне століття' -> 0 (TV fiction, wrong namesake)\n"
+    "- Target 'Igor Piddubnyi'; page is an art gallery selling paintings by an artist of that name -> 0 (different person)\n"
+    "- Target 'Pavlo Martyshev'; news article quoting him as a KSE Agrocenter analyst on land prices -> 5\n\n"
+    "Respond with ONLY a single digit 0-5."
+)
+
+RELEVANCE_SYSTEM_PROMPT = "You are a strict rater. Output only one digit from 0 to 5."
+
 
 class LLM:
     """A wrapper class for interacting with LLM models via OpenAI-compatible API or local Ollama.
@@ -66,7 +100,13 @@ class LLM:
         except Exception:
             self.client = None
 
-    def _create_completion(self, prompt: str, max_tokens: int = 64, temperature: float = 0.0) -> str:
+    def _create_completion(
+        self,
+        prompt: str,
+        max_tokens: int = 64,
+        temperature: float = 0.0,
+        system_prompt: str = SYSTEM_PROMPT,
+    ) -> str:
         """Create a completion using either Ollama (local) or the OpenAI-compatible client.
 
         Returns the model text or empty string on failure.
@@ -86,7 +126,7 @@ class LLM:
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
-                messages=[{"role": "system", "content": SYSTEM_PROMPT}, {
+                messages=[{"role": "system", "content": system_prompt}, {
                     "role": "user", "content": prompt}],
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -204,3 +244,49 @@ class LLM:
             return words >= 200 or paragraphs >= 2
 
         return answer.strip().lower().startswith("y")
+
+    @staticmethod
+    def _parse_score(answer: str) -> int | None:
+        """Extract the first 0-5 digit from a model answer; None if absent."""
+        for ch in answer:
+            if ch in "012345":
+                return int(ch)
+        return None
+
+    def score_relevance(self, person: str, title: str, text: str) -> int:
+        """Rate a page's relevance to ``person`` as a news publication, 0-5.
+
+        Considers both topical/identity relevance and whether the page is a
+        genuine article. Falls back to a length-based heuristic if the model is
+        unavailable or returns no usable digit, so the column is always filled.
+
+        Args:
+            person: The target person/entity the row was found for.
+            title: The page title.
+            text: Extracted page/body text (may be empty).
+
+        Returns:
+            Integer score in the range 0-5.
+        """
+        body = (text or "").strip()
+        prompt = RELEVANCE_SCORE_PROMPT.format(
+            person=person or "(unknown)",
+            title=(title or "")[:300],
+            text=body[:3000] if body else "(no text extracted)",
+        )
+        answer = self._create_completion(
+            prompt, max_tokens=4, temperature=0.0, system_prompt=RELEVANCE_SYSTEM_PROMPT
+        )
+        score = self._parse_score(answer) if answer else None
+        if score is not None:
+            return score
+
+        # Heuristic fallback: longer article-like text scores higher.
+        words = len(body.split())
+        if words >= 300:
+            return 3
+        if words >= 100:
+            return 2
+        if words > 0:
+            return 1
+        return 0

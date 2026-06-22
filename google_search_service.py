@@ -1,4 +1,5 @@
 import csv
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,26 @@ from googleapiclient.errors import HttpError
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class QuotaExceededError(Exception):
+    """Raised when the search backend reports the daily/rate quota is exhausted.
+
+    Signals the pipeline to checkpoint progress and stop, so a later run
+    (e.g. the next day) can resume from where it left off.
+    """
+
+
+class SearchError(Exception):
+    """Raised when a search page fails for a non-quota reason.
+
+    Distinguishes a genuine failure (network/API error) from "no more results",
+    so a failed query is retried rather than silently recorded as empty.
+    """
+
+
+# API error 'reason' tokens that indicate quota/rate exhaustion (seen on 403).
+_QUOTA_REASONS = ("quota", "ratelimitexceeded", "dailylimitexceeded", "userratelimitexceeded")
 
 
 # Type aliases for clarity
@@ -79,15 +100,26 @@ class GoogleSearchService:
         max_results = min(max_results, self.MAX_RESULTS_PER_QUERY)
 
         for start_index in range(1, max_results + 1, self.RESULTS_PER_PAGE):
-            results = self._fetch_page(
-                decoded_query,
-                start_index,
-                max_results - len(all_results),
-                sort_by_date,
-                region,
-                date_from,
-                date_to,
-            )
+            try:
+                results = self._fetch_page_with_retry(
+                    decoded_query,
+                    start_index,
+                    max_results - len(all_results),
+                    sort_by_date,
+                    region,
+                    date_from,
+                    date_to,
+                )
+            except SearchError:
+                # If we already gathered some results, keep them; otherwise let
+                # the caller know this query failed (so it can be retried).
+                if all_results:
+                    logger.warning(
+                        "Page error after partial results for '%s'; returning %d gathered.",
+                        decoded_query, len(all_results),
+                    )
+                    break
+                raise
 
             if results is None:
                 break
@@ -102,6 +134,42 @@ class GoogleSearchService:
 
         logger.info("Total results found: %d", len(all_results))
         return all_results
+
+    def _fetch_page_with_retry(
+        self,
+        *args: Any,
+        retries: int = 2,
+        backoff: float = 2.0,
+    ) -> SearchResults | None:
+        """Call ``_fetch_page`` with retries on transient (non-quota) errors.
+
+        QuotaExceededError propagates immediately (no point retrying). A
+        SearchError is retried up to ``retries`` times with linear backoff
+        before being re-raised.
+        """
+        for attempt in range(retries + 1):
+            try:
+                return self._fetch_page(*args)
+            except SearchError:
+                if attempt >= retries:
+                    raise
+                time.sleep(backoff * (attempt + 1))
+
+    @staticmethod
+    def _is_quota_error(error: HttpError) -> bool:
+        """Return True only for genuine quota/rate-limit errors (429, or 403
+        whose reason names a quota), not every 403 (e.g. invalid key)."""
+        status = getattr(getattr(error, "resp", None), "status", None)
+        if status == 429:
+            return True
+        if status == 403:
+            haystack = str(error).lower()
+            content = getattr(error, "content", b"") or b""
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", "ignore")
+            haystack += str(content).lower()
+            return any(token in haystack for token in _QUOTA_REASONS)
+        return False
 
     def _fetch_page(
         self,
@@ -145,11 +213,14 @@ class GoogleSearchService:
             return result.get("items")
 
         except HttpError as e:
+            if self._is_quota_error(e):
+                logger.warning("Search quota exhausted at start_index %s.", start_index)
+                raise QuotaExceededError(str(e)) from e
             logger.error("HTTP Error at start_index %s: %s", start_index, e)
+            raise SearchError(str(e)) from e
         except Exception as e:
             logger.error("Error at start_index %s: %s", start_index, e)
-
-        return None
+            raise SearchError(str(e)) from e
 
     @staticmethod
     def _format_date(date_str: str | None) -> str | None:

@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 from htmldate import find_date
 from newspaper import Article
 
-from configuration import REWRITE_NAMES, BLACKLISTED_DOMAINS, URL_STOP_WORDS, LLM_MODEL
+from configuration import LLM_MODEL
 from llm import LLM
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,9 @@ class DataSorting:
     COL_LINK = "Link"
     COL_PERSON = "Person"
     COL_DATE = "Date"
+    COL_TITLE = "Title"
     COL_TITLE_TEXT = "Title text"
+    COL_RELEVANCE = "Relevance"
 
     # Default settings
     DEFAULT_MAX_TEXT_LENGTH = 1500
@@ -32,18 +34,22 @@ class DataSorting:
             dataframe: pd.DataFrame,
             blacklisted_domains: list[str] | None = None,
             url_stop_words: list[str] | None = None,
+            rewrite_names: dict[str, str] | None = None,
             llm: Optional[LLM] = None,
     ) -> None:
         """Initialize the DataSorting class with a DataFrame and filter settings.
 
         Args:
             dataframe: The pandas DataFrame to be processed.
-            blacklisted_domains: Domains to filter out. Uses config default if None.
-            url_stop_words: URL keywords to filter out. Uses config default if None.
+            blacklisted_domains: Domains to filter out. Empty list if None.
+            url_stop_words: URL keywords to filter out. Empty list if None.
+            rewrite_names: Mapping of old -> new person names. Empty if None.
+            llm: Optional LLM instance for the AI relevance filter.
         """
         self.dataframe = dataframe
-        self.blacklisted_domains = blacklisted_domains or BLACKLISTED_DOMAINS
-        self.url_stop_words = url_stop_words or URL_STOP_WORDS
+        self.blacklisted_domains = blacklisted_domains or []
+        self.url_stop_words = url_stop_words or []
+        self.rewrite_names = rewrite_names or {}
         self.llm = llm
 
     def sort_by_column(
@@ -140,16 +146,16 @@ class DataSorting:
         return filtered_df
 
     def rename_person(self) -> Self:
-        """Normalize person names using the configuration mapping.
+        """Normalize person names using the rewrite mapping.
 
-        Uses REWRITE_NAMES from configuration to standardize names
-        (e.g., Ukrainian to English transliteration).
+        Uses ``self.rewrite_names`` (loaded from the Blacklists sheet) to
+        standardize names (e.g., Ukrainian to English transliteration).
 
         Returns:
             Self for method chaining.
         """
         self.dataframe[self.COL_PERSON] = self.dataframe[self.COL_PERSON].replace(
-            REWRITE_NAMES
+            self.rewrite_names
         )
         return self
 
@@ -246,12 +252,46 @@ class DataSorting:
         if self.COL_TITLE_TEXT not in self.dataframe.columns:
             self.dataframe[self.COL_TITLE_TEXT] = None
 
+        # Date may load as an all-NaN float column; cast to object so writing
+        # date strings into it doesn't trigger a pandas dtype FutureWarning.
+        if self.COL_DATE in self.dataframe.columns:
+            self.dataframe[self.COL_DATE] = self.dataframe[self.COL_DATE].astype(object)
+
         for index, row in self.dataframe.iterrows():
             link = row[self.COL_LINK]
             logger.debug("Processing index %s: %s", index, link)
             self._fill_single_blank_slot(index)
 
         logger.info("Filling blank slots completed.")
+        return self
+
+    def add_relevance_scores(self) -> Self:
+        """Add a 0-5 ``Relevance`` score column using the LLM (no rows dropped).
+
+        Each row is scored from the target person, title, and scraped text so a
+        human can triage in the sheet instead of relying on a hard cut. Rows are
+        kept regardless of score.
+
+        Returns:
+            Self for method chaining.
+        """
+        llm = self.llm or LLM(model_name=LLM_MODEL, use_ollama=True)
+
+        scores: list[int] = []
+        for _, row in self.dataframe.iterrows():
+            person = row.get(self.COL_PERSON, "")
+            title = row.get(self.COL_TITLE, "")
+            text = row.get(self.COL_TITLE_TEXT, "")
+            if pd.isna(text):
+                text = ""
+            try:
+                scores.append(int(llm.score_relevance(person, title, text)))
+            except Exception as e:
+                logger.error("LLM scoring error: %s", e)
+                scores.append(0)
+
+        self.dataframe[self.COL_RELEVANCE] = scores
+        logger.info("Relevance scores added for %d rows.", len(scores))
         return self
 
     def apply_ai_filter(self) -> Self:
