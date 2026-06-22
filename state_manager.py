@@ -36,7 +36,8 @@ class StateManager:
             return
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-            self._completed = raw.get("completed", {})
+            completed = raw.get("completed", {}) if isinstance(raw, dict) else {}
+            self._completed = completed if isinstance(completed, dict) else {}
             logger.info("Loaded search state: %d queries already done.", len(self._completed))
         except (json.JSONDecodeError, OSError) as e:
             logger.error("Could not read state file %s: %s. Starting fresh.", self.path, e)
