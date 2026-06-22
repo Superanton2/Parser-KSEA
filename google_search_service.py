@@ -158,7 +158,14 @@ class GoogleSearchService:
 
         except HttpError as e:
             status = getattr(getattr(e, "resp", None), "status", None)
-            if status in _QUOTA_STATUSES:
+            is_quota = status == 429
+            if status == 403:
+                try:
+                    content = (getattr(e, "content", b"") or b"").decode("utf-8", "ignore").lower()
+                    is_quota = "quota" in content or "dailylimitexceeded" in content
+                except Exception:
+                    is_quota = False
+            if is_quota:
                 logger.warning("Search quota exhausted (HTTP %s) at start_index %s.", status, start_index)
                 raise QuotaExceededError(str(e)) from e
             logger.error("HTTP Error at start_index %s: %s", start_index, e)
